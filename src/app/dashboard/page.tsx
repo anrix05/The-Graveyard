@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { motion } from "framer-motion";
 import { Package, ShoppingBag, Users, Plus, Settings, IndianRupee, Check, X, Github, MessageSquare, ChevronDown } from "lucide-react";
 import Header from "@/components/Header";
@@ -25,7 +25,7 @@ const ChatInterface = dynamic(() => import("@/components/ChatInterface"), {
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { supabase } from "@/lib/supabase";
-import { useEffect } from "react";
+
 
 // Filter mock projects for different tabs (Simulation)
 const myUploads = mockProjects.slice(0, 3);
@@ -41,7 +41,7 @@ const TABS = [
     { id: "settings", label: "SETTINGS", icon: Settings },
 ];
 
-export default function DashboardPage() {
+function DashboardContent() {
     const { user } = useAuth();
     const { showToast } = useToast();
     const searchParams = useSearchParams();
@@ -786,5 +786,17 @@ export default function DashboardPage() {
 
             <Footer />
         </div>
+    );
+}
+
+export default function DashboardPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center min-h-screen bg-cyber-black text-cyber-neon font-mono animate-pulse">
+                INITIALIZING_DASHBOARD_PROTOCOL...
+            </div>
+        }>
+            <DashboardContent />
+        </Suspense>
     );
 }
