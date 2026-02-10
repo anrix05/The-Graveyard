@@ -3,18 +3,20 @@ import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 
 // Securely initialized Supabase Client with Service Role (for Admin tasks)
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, // Fallback for dev if service key missing (WARN: Not secure)
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        }
-    }
-);
 
 export async function POST(req: Request) {
+    // Securely initialized Supabase Client with Service Role (for Admin tasks)
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, // Fallback for dev if service key missing (WARN: Not secure)
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        }
+    );
+
     try {
         const {
             razorpay_order_id,
