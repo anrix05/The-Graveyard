@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Failed to ping database' }, { status: 500 });
     }
 
-    return NextResponse.json({ message: 'Database pinged successfully', data }, { status: 200 });
+    return NextResponse.json({ message: 'Database pinged successfully' }, { status: 200 });
   } catch (error) {
     console.error('Unexpected error during database ping:', error);
     return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
