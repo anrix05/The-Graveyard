@@ -1,38 +1,24 @@
-import { TECH_ICONS } from '@/types/project';
+import React from 'react';
 import { cn } from '@/lib/utils';
-import * as Icons from 'lucide-react';
 
 interface TechBadgeProps {
   tech: string;
   className?: string;
+  size?: 'sm' | 'md';
 }
 
-const TechBadge = ({ tech, className }: TechBadgeProps) => {
-  const normalizedTech = tech.toLowerCase();
-  const iconData = TECH_ICONS[normalizedTech];
-  
-  // Dynamically get the icon component from Lucide
-  // If not found, default to 'Code' icon
-  // @ts-ignore - Dynamic access to icons
-  const IconComponent = iconData ? Icons[iconData.icon] : Icons.Code;
-  const FinalIcon = IconComponent || Icons.Code;
-
-  const color = iconData?.color || '#9ca3af';
-
+export const TechBadge: React.FC<TechBadgeProps> = ({ tech, className, size = 'sm' }) => {
   return (
-    <span 
+    <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono font-medium uppercase tracking-wider border transition-colors",
+        'inline-flex items-center gap-1.5 font-mono font-medium rounded-full border border-line transition-colors select-none',
+        'bg-surface-2 text-fg/80 hover:text-white hover:border-white/20',
+        size === 'sm' ? 'text-[11px] px-2.5 py-0.5' : 'text-xs px-3 py-1',
         className
       )}
-      style={{
-        borderColor: `${color}40`, // 25% opacity
-        backgroundColor: `${color}10`, // 10% opacity
-        color: color
-      }}
     >
-      <FinalIcon className="w-3 h-3" />
-      {iconData?.name || tech}
+      <span className="w-1 h-1 rounded-full bg-white/40 shrink-0" />
+      <span>{tech}</span>
     </span>
   );
 };

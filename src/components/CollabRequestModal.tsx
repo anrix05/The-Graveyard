@@ -1,127 +1,236 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { X, Send, User, MessageSquare } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import CyberButton from "./ui/CyberButton";
+import React, { useState } from 'react';
+import { X, Users, CheckCircle, AlertTriangle, Send } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { Project } from '@/types/project';
+import Button from '@/components/ui/Button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 
 interface CollabRequestModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (contact: string, specialization: string) => Promise<void>;
-    projectTitle: string;
+  isOpen: boolean;
+  onClose: () => void;
+  project?: Project | null;
+  projectId?: string;
+  projectTitle?: string;
+  collabTerms?: string | null;
+  onSuccess?: () => void;
 }
 
-export default function CollabRequestModal({ isOpen, onClose, onSubmit, projectTitle }: CollabRequestModalProps) {
-    const [contact, setContact] = useState("");
-    const [specialization, setSpecialization] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+export const CollabRequestModal: React.FC<CollabRequestModalProps> = ({
+  isOpen,
+  onClose,
+  project,
+  projectId,
+  projectTitle,
+  collabTerms,
+  onSuccess,
+}) => {
+  const { user } = useAuth();
+  const effectiveProjectId = project?.id || projectId || '';
+  const effectiveProjectTitle = project?.title || projectTitle || '';
+  const effectiveCollabTerms = project?.collab_terms || collabTerms;
+  const [pitch, setPitch] = useState('');
+  const [background, setBackground] = useState('');
+  const [contact, setContact] = useState(user?.email || '');
+  const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!contact.trim() || !specialization.trim()) return;
+  if (!isOpen) return null;
 
-        setIsSubmitting(true);
-        try {
-            await onSubmit(contact, specialization);
-            onClose();
-        } catch (error) {
-            console.error("Submission error:", error);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  const minPitchLength = 50;
+  const charsRemaining = minPitchLength - pitch.length;
 
-    if (!isOpen) return null;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast.error('Authentication required to submit collaboration pitch.');
+      return;
+    }
 
-    return (
-        <AnimatePresence>
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="w-full max-w-md bg-cyber-black border border-cyber-neon/30 cyber-clip relative"
-                >
-                    {/* Header */}
-                    <div className="flex justify-between items-center p-6 border-b border-cyber-gray/30 bg-cyber-dark/50">
-                        <div>
-                            <h2 className="text-xl font-display font-bold text-white tracking-wider">
-                                ACCESS_REQUEST
-                            </h2>
-                            <p className="text-xs text-cyber-neon font-mono mt-1">
-                                TARGET: {projectTitle}
-                            </p>
-                        </div>
-                        <button onClick={onClose} className="text-cyber-muted hover:text-white transition-colors">
-                            <X className="w-5 h-5" />
-                        </button>
+    if (pitch.length < minPitchLength) {
+      setErrorMsg(`Your pitch is too short. Please provide at least ${minPitchLength} characters.`);
+      return;
+    }
+
+    if (!contact.trim()) {
+      setErrorMsg('Contact information is required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMsg(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session expired.');
+
+      const res = await fetch('/api/collab', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          projectId: effectiveProjectId,
+          pitch,
+          background: background.trim() || undefined,
+          contact: contact.trim(),
+          portfolioUrl: portfolioUrl.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to submit pitch.');
+      }
+
+      setIsSuccess(true);
+      toast.success('Collaboration pitch submitted!');
+      onSuccess?.();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Submission failed';
+      setErrorMsg(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-lg rounded-[24px] bg-surface border border-line shadow-2xl overflow-hidden flex flex-col" data-lenis-prevent>
+        {/* Header */}
+        <div className="p-6 border-b border-line flex items-center justify-between bg-surface-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-accent">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-semibold text-white">
+                Apply to collaborate
+              </h2>
+              <p className="font-mono text-xs text-muted truncate max-w-[280px]">
+                {effectiveProjectTitle} {effectiveCollabTerms ? `(${effectiveCollabTerms})` : ''}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full text-muted hover:text-white transition-colors" aria-label="Close modal">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 sm:p-7">
+          {isSuccess ? (
+            <div className="py-6 text-center space-y-4">
+              <div className="w-14 h-14 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-accent mx-auto">
+                <CheckCircle className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="font-display text-xl font-semibold text-white">Proposal dispatched</h3>
+                <p className="font-sans text-sm text-muted mt-2 max-w-sm mx-auto leading-relaxed">
+                  Your collaboration proposal has been sent to the owner. When accepted, you will receive an in-app transmission notification to begin co-building.
+                </p>
+              </div>
+                  <Button variant="primary" mode="collab" size="sm" onClick={onClose}>
+                    Acknowledge
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {errorMsg && (
+                    <div className="p-3 bg-[#ff2a2a]/10 border border-[#ff2a2a]/30 rounded text-xs font-sans text-[#ff2a2a] flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{errorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Pitch Field */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <label className="text-[#ededed]">
+                        Your Value Pitch <span className="text-[#ff2a2a]">*</span>
+                      </label>
+                      <span className={charsRemaining > 0 ? 'text-[#fbbf24]' : 'text-[#39ff14]'}>
+                        {pitch.length} / {minPitchLength} chars min
+                      </span>
+                    </div>
+                    <Textarea
+                      rows={4}
+                      value={pitch}
+                      onChange={(e) => setPitch(e.target.value)}
+                      placeholder="Explain what skills you bring, what feature you want to tackle, and how you plan to finish or commercialize this project..."
+                      error={Boolean(pitch && charsRemaining > 0)}
+                    />
+                  </div>
+
+                  {/* Background / Skills */}
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-xs text-[#ededed] block">
+                      Background & Relevant Experience (Optional)
+                    </label>
+                    <Input
+                      value={background}
+                      onChange={(e) => setBackground(e.target.value)}
+                      placeholder="e.g. 4 yrs full-stack TS, built SaaS x, backend specialist"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Contact Info */}
+                    <div className="space-y-1.5">
+                      <label className="font-mono text-xs text-[#ededed] block">
+                        Contact Info (Email / Discord / Telegram) <span className="text-[#ff2a2a]">*</span>
+                      </label>
+                      <Input
+                        value={contact}
+                        onChange={(e) => setContact(e.target.value)}
+                        placeholder="you@domain.com or @handle"
+                      />
                     </div>
 
-                    {/* Form */}
-                    <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                        <div>
-                            <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                Contact Frequency (Email/Discord/Phone)
-                            </label>
-                            <div className="relative">
-                                <User className="absolute left-3 top-3 w-4 h-4 text-cyber-gray" />
-                                <input
-                                    type="text"
-                                    value={contact}
-                                    onChange={(e) => setContact(e.target.value)}
-                                    placeholder="e.g. user#1234 or email@domain.com"
-                                    className="w-full bg-cyber-dark border border-cyber-gray text-white pl-10 pr-4 py-3 focus:border-cyber-neon focus:outline-none font-mono text-sm transition-colors"
-                                    required
-                                />
-                            </div>
-                        </div>
+                    {/* Portfolio / GitHub Link */}
+                    <div className="space-y-1.5">
+                      <label className="font-mono text-xs text-[#ededed] block">
+                        Portfolio or GitHub URL
+                      </label>
+                      <Input
+                        value={portfolioUrl}
+                        onChange={(e) => setPortfolioUrl(e.target.value)}
+                        placeholder="https://github.com/..."
+                      />
+                    </div>
+                  </div>
 
-                        <div>
-                            <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                Specialization / Protocols
-                            </label>
-                            <div className="relative">
-                                <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-cyber-gray" />
-                                <textarea
-                                    value={specialization}
-                                    onChange={(e) => setSpecialization(e.target.value)}
-                                    placeholder="Describe your skills and why you want to join..."
-                                    className="w-full bg-cyber-dark border border-cyber-gray text-white pl-10 pr-4 py-3 h-32 resize-none focus:border-cyber-neon focus:outline-none font-mono text-sm transition-colors"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-4 pt-2">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="flex-1 py-3 border border-cyber-gray/30 text-cyber-muted font-mono hover:bg-cyber-gray/10 transition-colors uppercase text-sm"
-                            >
-                                Cancel
-                            </button>
-                            <CyberButton
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="flex-1 bg-cyber-neon text-cyber-black font-bold"
-                            >
-                                {isSubmitting ? (
-                                    "TRANSMITTING..."
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4 mr-2" />
-                                        SEND_REQUEST
-                                    </>
-                                )}
-                            </CyberButton>
-                        </div>
-                    </form>
-
-                    {/* Decorative Corner */}
-                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyber-neon" />
-                </motion.div>
+                  {/* Actions */}
+                  <div className="flex items-center justify-between gap-3 pt-4 border-t border-[#2d2d2d]">
+                    <Button variant="ghost" size="sm" type="button" onClick={onClose} disabled={isSubmitting}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      mode="collab"
+                      size="md"
+                      type="submit"
+                      isLoading={isSubmitting}
+                      disabled={charsRemaining > 0}
+                      leftIcon={<Send className="w-3.5 h-3.5" />}
+                    >
+                      Submit Pitch
+                    </Button>
+                  </div>
+                </form>
+              )}
             </div>
-        </AnimatePresence>
-    );
-}
+      </div>
+    </div>
+  );
+};
+
+export default CollabRequestModal;

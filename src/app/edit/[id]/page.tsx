@@ -1,406 +1,425 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Plus, Upload, AlertTriangle, Check, Save } from "lucide-react";
-import CyberButton from "@/components/ui/CyberButton";
-import Header from "@/components/Header";
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
-import { useToast } from "@/context/ToastContext";
-
-const TECH_STACKS = [
-    "react", "typescript", "javascript", "nodejs", "python", "rust", "go", "nextjs", "vue", "svelte"
-];
-
-const LISTING_TYPES = [
-    {
-        id: "adopt",
-        title: "ADOPT",
-        subtitle: "Free to fork",
-        description: "Give your code a second life."
-    },
-    {
-        id: "buy",
-        title: "SELL",
-        subtitle: "Set a price",
-        description: "Get paid for your hard work."
-    },
-    {
-        id: "collab",
-        title: "COLLAB",
-        subtitle: "Find a partner",
-        description: "Team up to finish the job."
-    }
-];
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Save, Check } from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Button from '@/components/ui/Button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { ModeBadge } from '@/components/ui/badge';
+import TechBadge from '@/components/TechBadge';
+import { CANONICAL_TECHS, Project, CauseOfDeath, CAUSE_OF_DEATH_LABELS } from '@/types/project';
+import { formatINR } from '@/lib/format';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
 export default function EditProjectPage() {
-    const { id } = useParams();
-    const { user } = useAuth();
-    const { showToast } = useToast();
-    const router = useRouter();
+  const params = useParams();
+  const router = useRouter();
+  const { user } = useAuth();
+  const projectId = params?.id as string;
 
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [file, setFile] = useState<File | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-    // Form State
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
-    const [price, setPrice] = useState(0);
-    const [repoLink, setRepoLink] = useState("");
-    const [selectedTech, setSelectedTech] = useState<string[]>([]);
-    const [listingType, setListingType] = useState<string>("adopt");
+  // Editable state
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [causeOfDeath, setCauseOfDeath] = useState<CauseOfDeath>('other');
+  const [abandonedOn, setAbandonedOn] = useState('');
+  const [epitaph, setEpitaph] = useState('');
+  const [demoUrl, setDemoUrl] = useState('');
+  const [techStack, setTechStack] = useState<string[]>([]);
+  const [collabTerms, setCollabTerms] = useState('');
+  const [isCollabFilled, setIsCollabFilled] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
 
-    const [customTech, setCustomTech] = useState("");
-    const [availableTechs, setAvailableTechs] = useState(TECH_STACKS);
+  // Cover image
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
-    // Fetch Project Data
-    useEffect(() => {
-        const fetchProject = async () => {
-            if (!id || !user) return; // Wait for user
+  useEffect(() => {
+    if (!projectId || !user) return;
 
-            try {
-                const { data, error } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .eq('id', id)
-                    .single();
+    const fetchProject = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', projectId)
+          .maybeSingle();
 
-                if (error) throw error;
-                if (!data) throw new Error("Project not found");
+        if (error || !data) throw new Error('Project not found');
 
-                // Verify Ownership
-                if (data.seller_id !== user.id) {
-                    showToast("ACCESS_DENIED: Unauthorized access attempt detected.", "error");
-                    router.push('/dashboard');
-                    return;
-                }
-
-                // Pre-fill form
-                setTitle(data.title);
-                setDescription(data.description || "");
-                setPrice(data.price || 0);
-                setSelectedTech(data.tech_stack || []);
-                setListingType(data.interaction_type);
-                setRepoLink(data.repo_link || "");
-
-                // Add existing techs to available if not present
-                const existingTechs = data.tech_stack || [];
-                const newAvailable = [...new Set([...TECH_STACKS, ...existingTechs])];
-                setAvailableTechs(newAvailable);
-
-            } catch (err: any) {
-                console.error("Error fetching project:", err);
-                showToast("LOAD_ERROR: " + err.message, "error");
-                router.push('/dashboard');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        if (user) {
-            fetchProject();
+        if (data.seller_id !== user.id) {
+          toast.error('You do not have permission to modify this codebase.');
+          router.push('/dashboard');
+          return;
         }
-    }, [id, user, router]);
 
-
-    const toggleTech = (tech: string) => {
-        if (selectedTech.includes(tech)) {
-            setSelectedTech(selectedTech.filter(t => t !== tech));
-        } else {
-            setSelectedTech([...selectedTech, tech]);
+        const raw = data as any;
+        let pricePaise = 0;
+        if (raw.price_paise !== undefined && raw.price_paise !== null) {
+          pricePaise = Number(raw.price_paise);
+        } else if (raw.price !== undefined && raw.price !== null) {
+          pricePaise = Math.round(Number(raw.price) * 100);
         }
+        setProject({
+          ...raw,
+          price_paise: pricePaise,
+        } as Project);
+        setTitle(data.title || '');
+        setDescription(data.description || '');
+        setCauseOfDeath((data.cause_of_death as CauseOfDeath) || 'other');
+        setAbandonedOn(data.abandoned_on || '');
+        setEpitaph(data.epitaph || '');
+        setDemoUrl(data.demo_url || '');
+        setTechStack(data.tech_stack || []);
+        setCollabTerms(data.collab_terms || '');
+        setIsCollabFilled(Boolean(data.is_collab_filled));
+        setIsArchived(Boolean(data.is_archived));
+        setCoverPreview(data.cover_url || null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error loading project';
+        toast.error(msg);
+        router.push('/dashboard');
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    const addCustomTech = () => {
-        if (!customTech.trim()) return;
-        const tech = customTech.trim().toLowerCase();
-        if (!availableTechs.includes(tech)) {
-            setAvailableTechs([...availableTechs, tech]);
-        }
-        if (!selectedTech.includes(tech)) {
-            setSelectedTech([...selectedTech, tech]);
-        }
-        setCustomTech("");
-    };
+    fetchProject();
+  }, [projectId, user?.id, router]);
 
-    const handleUpdate = async () => {
-        if (!user) return;
-        if (!selectedTech.length) {
-            showToast("VALIDATION_ERROR: No Tech Stack detected.", "error");
-            return;
-        }
-        if (!title || !description) {
-            showToast("VALIDATION_ERROR: Title and Description are required.", "error");
-            return;
-        }
+  const toggleTech = (tech: string) => {
+    if (techStack.includes(tech)) {
+      setTechStack(techStack.filter((t) => t !== tech));
+    } else {
+      setTechStack([...techStack, tech]);
+    }
+  };
 
-        setIsSubmitting(true);
+  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Cover must be under 2MB.');
+      return;
+    }
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+  };
 
-        try {
-            console.log("Starting Update...");
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !project) return;
 
-            let fileUrl = undefined; // Undefined means "don't update" in Supabase update if we skip it? Actually need to be careful.
-            // Better to construct update object.
-
-            // 1. Upload File to Supabase Storage (Only if NEW file exists)
-            if (file) {
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-                console.log("Uploading new file to:", fileName);
-
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('project-files')
-                    .upload(fileName, file);
-
-                if (uploadError) throw uploadError;
-                console.log("Upload Success:", uploadData);
-                fileUrl = uploadData.path;
-            }
-
-            // 2. Update Project Record
-            const updates: any = {
-                title,
-                description,
-                tech_stack: selectedTech,
-                interaction_type: listingType,
-                price: listingType === 'buy' ? price : 0,
-                repo_link: repoLink
-            };
-
-            if (fileUrl) {
-                updates.file_url = fileUrl;
-            }
-
-            const { error } = await supabase
-                .from('projects')
-                .update(updates)
-                .eq('id', id);
-
-            if (error) {
-                console.error("Database Update Error:", error);
-                throw error;
-            }
-
-            console.log("Update Success!");
-            showToast("PROJECT_UPDATED: Artifact metadata synchronized.", "success");
-            router.push(`/project/${id}`);
-
-        } catch (err: any) {
-            console.error("Update Error:", err);
-            showToast("SYSTEM_ERROR: " + (err.message || "Update Failed"), "error");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-cyber-black text-foreground flex items-center justify-center">
-                <div className="text-cyber-neon font-mono animate-pulse">DECRYPTING_PROJECT_DATA...</div>
-            </div>
-        );
+    if (!title.trim()) {
+      toast.error('Title is required.');
+      return;
     }
 
+    setIsSaving(true);
+    const toastId = toast.loading('Saving updates to codebase...');
+
+    try {
+      let finalCoverUrl = project.cover_url;
+
+      if (coverFile) {
+        const coverExt = coverFile.name.split('.').pop() || 'png';
+        const coverPath = `${user.id}/${Date.now()}_cover.${coverExt}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('project-covers')
+          .upload(coverPath, coverFile, { upsert: true });
+
+        if (!uploadErr) {
+          const { data: publicUrl } = supabase.storage
+            .from('project-covers')
+            .getPublicUrl(coverPath);
+          finalCoverUrl = publicUrl.publicUrl;
+        }
+      }
+
+      // Update allowed columns only
+      let { error: updateErr } = await supabase
+        .from('projects')
+        .update({
+          title: title.trim(),
+          description: description.trim(),
+          cause_of_death: causeOfDeath,
+          abandoned_on: abandonedOn || null,
+          epitaph: epitaph.trim() || null,
+          demo_url: demoUrl.trim() || null,
+          tech_stack: techStack,
+          cover_url: finalCoverUrl,
+          collab_terms: project.interaction_type === 'collab' ? collabTerms : null,
+          is_collab_filled: isCollabFilled,
+          is_archived: isArchived,
+        })
+        .eq('id', project.id)
+        .eq('seller_id', user.id);
+
+      if (updateErr && updateErr.message && updateErr.message.includes('column') && updateErr.message.includes('does not exist')) {
+        const fallbackRes = await supabase
+          .from('projects')
+          .update({
+            title: title.trim(),
+            description: description.trim(),
+            tech_stack: techStack,
+            is_collab_filled: isCollabFilled,
+            is_archived: isArchived,
+          })
+          .eq('id', project.id)
+          .eq('seller_id', user.id);
+        updateErr = fallbackRes.error;
+      }
+
+      if (updateErr) throw updateErr;
+
+      toast.success('Codebase parameters updated successfully!', { id: toastId });
+      router.push(`/project/${project.id}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      toast.error(msg, { id: toastId });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
     return (
-        <div className="min-h-screen bg-cyber-black text-foreground">
-            <Header />
-            <div className="pt-12 pb-24 px-4 md:px-8">
-                <div className="container mx-auto max-w-4xl">
-
-                    {/* Header Section */}
-                    <div className="mb-12">
-                        <h1 className="font-display text-4xl md:text-5xl font-bold text-white mb-4 tracking-wider">
-                            <span className="text-cyber-neon mr-4">✎</span>
-                            EDIT PROJECT
-                        </h1>
-                        <p className="text-cyber-muted font-mono text-lg max-w-2xl leading-relaxed">
-                            Update artifact metadata. Changes are propagated immediately to the network.
-                        </p>
-                    </div>
-
-                    {/* Main Form Container */}
-                    <div className="relative border border-cyber-gray/50 bg-cyber-dark/30 p-1 md:p-1 cyber-clip-lg">
-                        {/* Decorative Corner */}
-                        <div className="absolute top-0 left-0 w-4 h-4 border-l-2 border-t-2 border-cyber-neon" />
-                        <div className="absolute bottom-0 right-0 w-4 h-4 border-r-2 border-b-2 border-cyber-neon" />
-
-                        <div className="bg-cyber-black/80 backdrop-blur-sm p-6 md:p-10 space-y-10 cyber-clip-lg-inner">
-
-                            {/* Project Title */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">Project Title</label>
-                                <input
-                                    type="text"
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    className="w-full bg-cyber-dark/50 border border-cyber-gray/30 text-white p-4 font-mono text-lg focus:outline-none focus:border-cyber-neon/50 focus:ring-1 focus:ring-cyber-neon/50 transition-all placeholder:text-cyber-gray"
-                                />
-                            </div>
-
-                            {/* Description */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">Description</label>
-                                <textarea
-                                    rows={5}
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full bg-cyber-dark/50 border border-cyber-gray/30 text-white p-4 font-mono text-sm focus:outline-none focus:border-cyber-neon/50 focus:ring-1 focus:ring-cyber-neon/50 transition-all placeholder:text-cyber-gray resize-none"
-                                />
-                            </div>
-
-                            {/* Tech Stack */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">Tech Stack</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        className="flex-1 bg-cyber-dark/50 border border-cyber-gray/30 text-white p-3 font-mono text-sm focus:outline-none focus:border-cyber-neon/50 transition-all placeholder:text-cyber-gray"
-                                        placeholder="Add technology..."
-                                        value={customTech}
-                                        onChange={(e) => setCustomTech(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && addCustomTech()}
-                                    />
-                                    <button
-                                        className="bg-cyber-gray/20 hover:bg-cyber-gray/40 border border-cyber-gray/30 text-cyber-muted hover:text-white px-4 transition-colors"
-                                        onClick={addCustomTech}
-                                    >
-                                        <Plus className="w-5 h-5" />
-                                    </button>
-                                </div>
-                                <div className="flex flex-wrap gap-2 pt-2">
-                                    {availableTechs.map(tech => (
-                                        <button
-                                            key={tech}
-                                            onClick={() => toggleTech(tech)}
-                                            className={cn(
-                                                "px-3 py-1.5 font-mono text-xs border transition-all uppercase flex items-center gap-2",
-                                                selectedTech.includes(tech)
-                                                    ? "bg-cyber-neon/10 border-cyber-neon text-cyber-neon"
-                                                    : "bg-cyber-dark border-cyber-gray/30 text-cyber-muted hover:border-cyber-gray hover:text-white"
-                                            )}
-                                        >
-                                            <span>{tech}</span>
-                                            {selectedTech.includes(tech) && <Check className="w-3 h-3" />}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Listing Type */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">Listing Type</label>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {LISTING_TYPES.map(type => (
-                                        <div
-                                            key={type.id}
-                                            onClick={() => setListingType(type.id)}
-                                            className={cn(
-                                                "cursor-pointer border p-6 transition-all relative overflow-hidden group",
-                                                listingType === type.id
-                                                    ? "bg-cyber-dark border-cyber-neon"
-                                                    : "bg-cyber-dark/30 border-cyber-gray/30 hover:border-cyber-gray hover:bg-cyber-dark/50"
-                                            )}
-                                        >
-                                            <div className="relative z-10">
-                                                <h3 className={cn(
-                                                    "font-display font-bold text-lg mb-1 uppercase tracking-wide",
-                                                    listingType === type.id ? "text-white" : "text-cyber-muted group-hover:text-white"
-                                                )}>
-                                                    {type.title}
-                                                </h3>
-                                                <p className={cn(
-                                                    "font-mono text-xs",
-                                                    listingType === type.id ? "text-cyber-neon" : "text-cyber-muted"
-                                                )}>
-                                                    {type.subtitle}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Price Field (Conditional) */}
-                            {listingType === 'buy' && (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                                    <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">Price (INR)</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                                            <span className="text-cyber-neon font-mono text-lg">₹</span>
-                                        </div>
-                                        <input
-                                            type="number"
-                                            value={price}
-                                            onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
-                                            className="w-full bg-cyber-dark/50 border border-cyber-gray/30 text-white p-4 pl-10 font-mono text-lg focus:outline-none focus:border-cyber-neon/50 focus:ring-1 focus:ring-cyber-neon/50 transition-all placeholder:text-cyber-gray"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Project Files (Zip Upload) */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">
-                                    Update Source Files (.zip, .rar) <span className="text-cyber-gray ml-2 normal-case">(Leave empty to keep existing)</span>
-                                </label>
-                                <div className="relative border-2 border-dashed border-cyber-gray/30 hover:border-cyber-neon/50 bg-cyber-dark/30 transition-all group rounded-lg p-8 text-center cursor-pointer">
-                                    <input
-                                        type="file"
-                                        accept=".zip,.rar,.7z"
-                                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                    />
-                                    <div className="flex flex-col items-center justify-center space-y-4">
-                                        <div className="w-16 h-16 rounded-full bg-cyber-dark border border-cyber-gray/30 flex items-center justify-center group-hover:border-cyber-neon/50 transition-colors">
-                                            {file ? (
-                                                <Check className="w-8 h-8 text-cyber-neon" />
-                                            ) : (
-                                                <Upload className="w-8 h-8 text-cyber-muted group-hover:text-cyber-neon" />
-                                            )}
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="font-mono text-sm text-white">
-                                                {file ? file.name : "Upload new archive to replace current file"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Repository Link */}
-                            <div className="space-y-4">
-                                <label className="text-xs font-mono text-cyber-muted uppercase tracking-wider block">
-                                    Repository Link
-                                </label>
-                                <input
-                                    type="text"
-                                    value={repoLink}
-                                    onChange={(e) => setRepoLink(e.target.value)}
-                                    className="w-full bg-cyber-dark/50 border border-cyber-gray/30 text-white p-4 font-mono text-sm focus:outline-none focus:border-cyber-neon/50 focus:ring-1 focus:ring-cyber-neon/50 transition-all placeholder:text-cyber-gray"
-                                    placeholder="https://github.com/..."
-                                />
-                            </div>
-
-                            {/* Submit Button */}
-                            <CyberButton
-                                onClick={handleUpdate}
-                                isLoading={isSubmitting}
-                                disabled={isSubmitting}
-                                className="w-full h-16 bg-cyber-neon hover:bg-cyber-neon/80 text-cyber-black font-display font-bold text-lg tracking-widest uppercase cyber-clip-sm"
-                            >
-                                <Save className="w-5 h-5 mr-3" />
-                                {isSubmitting ? "OVERWRITING..." : "SAVE CHANGES"}
-                            </CyberButton>
-
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </div>
+      <div className="min-h-screen bg-bg text-white flex flex-col">
+        <Header />
+        <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-16 font-mono text-xs text-muted text-center">
+          Loading codebase parameters...
+        </main>
+        <Footer />
+      </div>
     );
+  }
+
+  return (
+    <div className="min-h-screen bg-bg text-white flex flex-col">
+      <Header />
+
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10">
+        <div className="mb-6 flex items-center justify-between">
+          <Link
+            href="/dashboard?tab=listings"
+            className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to console</span>
+          </Link>
+          {project && <ModeBadge mode={project.interaction_type} />}
+        </div>
+
+        <div className="bg-surface rounded-card border border-line p-6 sm:p-10 shadow-xl">
+          <form onSubmit={handleSave} className="space-y-6">
+            <div className="border-b border-line pb-4 flex items-center justify-between">
+              <div>
+                <h1 className="font-display text-2xl font-semibold text-white">Edit codebase</h1>
+                <p className="font-sans text-xs text-muted mt-0.5">Pricing, type, and ownership are immutable</p>
+              </div>
+            </div>
+
+            {/* Read-Only Stats Info */}
+            <div className="p-4 bg-surface-2 rounded-xl border border-line grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
+              <div>
+                <span className="text-muted block">Mode:</span>
+                <span className="text-white capitalize font-medium">{project?.interaction_type}</span>
+              </div>
+              <div>
+                <span className="text-muted block">Price:</span>
+                <span className="text-white">
+                  {project?.interaction_type === 'buy'
+                    ? formatINR(project.price_paise, { showFreeForZero: false })
+                    : 'Free'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted block">Status:</span>
+                <span className="text-[#39ff14]">{project?.is_sold ? 'Sold' : 'Available'}</span>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium text-white block">Project title</label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            </div>
+
+            {/* Tombstone fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="font-sans text-sm font-medium text-white block">Cause of death</label>
+                <select
+                  value={causeOfDeath}
+                  onChange={(e) => setCauseOfDeath(e.target.value as CauseOfDeath)}
+                  className="w-full h-11 px-3.5 bg-surface-2 border border-line rounded-input font-sans text-sm text-white"
+                >
+                  {Object.entries(CAUSE_OF_DEATH_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-sans text-sm font-medium text-white block">Abandoned on</label>
+                <Input
+                  type="date"
+                  value={abandonedOn}
+                  onChange={(e) => setAbandonedOn(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+            </div>
+
+            {/* Epitaph */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="font-sans text-sm font-medium text-white block">Epitaph (one-liner)</label>
+                <span className="font-mono text-xs text-muted">{epitaph.length}/140</span>
+              </div>
+              <Input
+                value={epitaph}
+                maxLength={140}
+                onChange={(e) => setEpitaph(e.target.value)}
+                placeholder="e.g. Shipped the auth, forgot the product."
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium text-white block">Description</label>
+              <Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} required />
+            </div>
+
+            {/* Cover Upload */}
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium text-white block">Cover image</label>
+              <div className="flex gap-4 items-center">
+                {coverPreview && (
+                  <div className="w-24 h-16 rounded-lg overflow-hidden border border-line shrink-0">
+                    <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="relative border border-line bg-surface-2 p-3 rounded-input cursor-pointer flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverSelect}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <span className="font-sans text-xs text-muted block text-center">
+                    Click to replace cover image (Max 2MB)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Demo URL */}
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium text-white block">Live demo URL</label>
+              <Input value={demoUrl} onChange={(e) => setDemoUrl(e.target.value)} placeholder="https://..." />
+            </div>
+
+            {/* Tech Stack Chips */}
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium text-white block">Tech stack</label>
+              <div className="flex flex-wrap gap-2">
+                {CANONICAL_TECHS.map((tech) => {
+                  const isSelected = techStack.includes(tech);
+                  return (
+                    <button
+                      key={tech}
+                      type="button"
+                      onClick={() => toggleTech(tech)}
+                      className={`px-3 py-1 text-xs font-medium rounded-full border capitalize transition-colors flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-white text-black font-semibold border-white'
+                          : 'bg-surface-2 text-muted border-line'
+                      }`}
+                    >
+                      <span>{tech}</span>
+                      {isSelected && <Check className="w-3 h-3 text-black" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Collab Options if Collab */}
+            {project?.interaction_type === 'collab' && (
+              <div className="p-4 bg-surface-2 rounded-card border border-line space-y-3">
+                <div className="space-y-2">
+                  <label className="font-sans text-sm font-medium text-white block">Collaboration terms</label>
+                  <Input value={collabTerms} onChange={(e) => setCollabTerms(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    checked={isCollabFilled}
+                    onChange={(e) => setIsCollabFilled(e.target.checked)}
+                    id="collabFilled"
+                    className="w-4 h-4 accent-[#60a5fa] cursor-pointer"
+                  />
+                  <label htmlFor="collabFilled" className="font-sans text-xs text-white cursor-pointer">
+                    Mark partner position as filled
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Archive Toggle */}
+            <div className="p-4 bg-surface-2 rounded-card border border-line flex items-center justify-between">
+              <div>
+                <span className="font-sans text-sm font-medium text-white block">
+                  Archive listing
+                </span>
+                <span className="font-sans text-xs text-muted">
+                  Hides project from the main public feed
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={isArchived}
+                onChange={(e) => setIsArchived(e.target.checked)}
+                className="w-4 h-4 accent-[#ff2a2a] cursor-pointer"
+              />
+            </div>
+
+            {/* Action Bar */}
+            <div className="pt-4 border-t border-line flex items-center justify-between">
+              <Link href={`/project/${project?.id}`}>
+                <Button variant="ghost" size="sm">
+                  Cancel
+                </Button>
+              </Link>
+              <Button
+                variant="primary"
+                mode="brand"
+                size="md"
+                type="submit"
+                isLoading={isSaving}
+                leftIcon={<Save className="w-4 h-4" />}
+              >
+                Save changes
+              </Button>
+            </div>
+          </form>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
 }

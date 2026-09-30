@@ -72,7 +72,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
             exit={{ opacity: 0, x: 20, scale: 0.9 }}
             layout
             className={cn(
-                "pointer-events-auto flex items-start gap-3 p-4 min-w-[300px] max-w-md rounded-lg border backdrop-blur-md shadow-lg cyber-clip-sm",
+                "pointer-events-auto flex items-start gap-3 p-4 min-w-[300px] max-w-md rounded-xl border shadow-xl",
                 bgColors[toast.type]
             )}
         >

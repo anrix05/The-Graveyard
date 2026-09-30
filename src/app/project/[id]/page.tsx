@@ -1,596 +1,1104 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { Project, Profile } from "@/types/project";
-import { useAuth } from "@/context/AuthContext";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import TechBadge from "@/components/TechBadge";
-import { motion } from "framer-motion";
-import { GitFork, IndianRupee, Users, ArrowLeft, ShieldAlert, Cpu, Calendar, User as UserIcon, Lock, Eye, MessageSquare } from "lucide-react";
-import CyberButton from "@/components/ui/CyberButton";
-import Link from "next/link";
-import { useToast } from "@/context/ToastContext";
+import React, { useEffect, useState, useMemo } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
+import {
+  ArrowLeft,
+  Calendar,
+  Eye,
+  Scale,
+  ExternalLink,
+  MessageSquare,
+  ShieldCheck,
+  CheckCircle,
+  Circle,
+  Download,
+  Github,
+  Copy,
+  Check,
+  Edit,
+  Archive,
+  UserCheck,
+  RotateCcw,
+  Sparkles,
+  Clock,
+  Code2,
+  GitCommit,
+  Layers,
+  Users,
+  FileText,
+  AlertCircle,
+} from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Button from '@/components/ui/Button';
+import CoverArt from '@/components/CoverArt';
+import { ModeBadge, StatusBadge } from '@/components/ui/badge';
+import TechBadge from '@/components/TechBadge';
+import Avatar from '@/components/ui/Avatar';
+import PaymentModal from '@/components/PaymentModal';
+import CollabRequestModal from '@/components/CollabRequestModal';
+import ScreenshotGallery from '@/components/project/ScreenshotGallery';
+import FileTreeViewer from '@/components/project/FileTreeViewer';
+import CompactProjectCard from '@/components/project/CompactProjectCard';
+import MarkdownRenderer from '@/components/ui/MarkdownRenderer';
+import { Project, Profile, CollabRole } from '@/types/project';
+import { formatINR, formatLOC, formatDeadFor } from '@/lib/format';
+import { formatEpitaph } from '@/lib/epitaph';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
-import PaymentModal from "@/components/PaymentModal";
-import CollabRequestModal from "@/components/CollabRequestModal";
+export default function ProjectDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
 
-export default function ProjectDetailsPage() {
-    const { id } = useParams();
-    const { user } = useAuth();
-    const router = useRouter();
+  const projectId = params?.id as string;
+  const initialIntent = searchParams?.get('intent');
 
-    const [project, setProject] = useState<Project | null>(null);
-    const [seller, setSeller] = useState<Profile | null>(null);
-    const [partner, setPartner] = useState<Profile | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-    const [isCollabModalOpen, setIsCollabModalOpen] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [seller, setSeller] = useState<Profile | null>(null);
+  const [sellerListingCount, setSellerListingCount] = useState(1);
+  const [moreFromSeller, setMoreFromSeller] = useState<Project[]>([]);
+  const [similarProjects, setSimilarProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState(false);
 
-    const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  // Entitlement / Vault state for this user
+  const [isEntitled, setIsEntitled] = useState(false);
+  const [accessData, setAccessData] = useState<{
+    hasArchive: boolean;
+    repoUrl: string | null;
+    inviteStatus: string;
+    inviteError?: string | null;
+  } | null>(null);
 
-    useEffect(() => {
-        const fetchProject = async () => {
-            if (!id) return;
-            setIsLoading(true);
+  // Modals & Action loading
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
+  const [isCollabModalOpen, setIsCollabModalOpen] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isRetryingInvite, setIsRetryingInvite] = useState(false);
 
-            // Fetch Project
-            const { data: projectData, error: projectError } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('id', id)
-                .single();
+  // Increment view count via RPC once per session
+  useEffect(() => {
+    if (!projectId) return;
+    const viewedKey = `viewed_${projectId}`;
+    if (!sessionStorage.getItem(viewedKey)) {
+      supabase.rpc('increment_project_view', { p_id: projectId }).then(() => {
+        sessionStorage.setItem(viewedKey, 'true');
+      });
+    }
+  }, [projectId]);
 
-            if (projectError) {
-                console.error("Error fetching project:", projectError);
-                setIsLoading(false);
-                return;
-            }
+  // Fetch project details, seller, recommendations, and user entitlement
+  useEffect(() => {
+    async function loadProjectData() {
+      if (!projectId) return;
+      setIsLoading(true);
 
-            setProject(projectData);
+      try {
+        // 1. Fetch Project
+        const { data: pData, error: pErr } = await supabase
+          .from('projects')
+          .select('*, seller:profiles(*)')
+          .eq('id', projectId)
+          .single();
 
-            // Fetch Seller
-            if (projectData.seller_id) {
-                const { data: sellerData, error: sellerError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', projectData.seller_id)
-                    .single();
+        if (pErr || !pData) {
+          toast.error('Project not found.');
+          setIsLoading(false);
+          return;
+        }
 
-                if (!sellerError) {
-                    setSeller(sellerData);
-                }
-            }
+        const raw = pData as any;
+        let pricePaise = 0;
+        if (raw.price_paise !== undefined && raw.price_paise !== null) {
+          pricePaise = Number(raw.price_paise);
+        } else if (raw.price !== undefined && raw.price !== null) {
+          pricePaise = Math.round(Number(raw.price) * 100);
+        }
 
-            // Check for pending request if user is logged in
-            if (user) {
-                // If I am the seller AND project is filled, fetch the PARTNER
-                if (user.id === projectData.seller_id && projectData.is_collab_filled) {
-                    const { data: partnerTx } = await supabase
-                        .from('transactions')
-                        .select('buyer:profiles(*)')
-                        .eq('project_id', id)
-                        .eq('status', 'completed')
-                        .eq('payment_id', 'COLLAB_REQUEST')
-                        .single();
-
-                    if (partnerTx?.buyer) {
-                        setPartner(partnerTx.buyer as unknown as Profile);
-                    }
-                }
-
-                // If I am the buyer, check for my pending request
-                const { data: existingRequests } = await supabase
-                    .from('transactions')
-                    .select('id')
-                    .eq('project_id', id)
-                    .eq('buyer_id', user.id)
-                    .eq('status', 'pending')
-                    .limit(1);
-
-                if (existingRequests && existingRequests.length > 0) {
-                    setHasPendingRequest(true);
-                }
-            }
-
-            setIsLoading(false);
+        const normalizedProject: Project = {
+          ...raw,
+          price_paise: pricePaise,
+          cause_of_death: raw.cause_of_death || 'other',
+          abandoned_on: raw.abandoned_on || null,
+          last_commit_at: raw.last_commit_at || null,
+          epitaph: raw.epitaph || null,
+          revived_at: raw.revived_at || null,
+          tagline: raw.tagline || null,
+          completion_percent: raw.completion_percent ?? null,
+          lines_of_code: raw.lines_of_code ?? null,
+          features: Array.isArray(raw.features) ? raw.features : [],
+          todo_items: Array.isArray(raw.todo_items) ? raw.todo_items : [],
+          setup_notes: raw.setup_notes || null,
+          screenshots: Array.isArray(raw.screenshots) ? raw.screenshots : [],
+          file_tree: Array.isArray(raw.file_tree) ? raw.file_tree : null,
+          collab_roles: Array.isArray(raw.collab_roles) ? raw.collab_roles : null,
+          seller: raw.seller || null,
         };
 
-        fetchProject();
+        setProject(normalizedProject);
 
-        // Increment View Count (Once per session per project)
-        const viewedKey = `viewed_${id}`;
-        if (!sessionStorage.getItem(viewedKey)) {
-            supabase.rpc('increment_project_view', { p_id: id }).then(({ error }) => {
-                if (error) console.error("Error incrementing view:", error);
-                else sessionStorage.setItem(viewedKey, 'true');
-            });
-        }
-    }, [id, user]);
+        // 2. Fetch Seller Profile & listing count
+        if (pData.seller_id) {
+          if (!raw.seller) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', pData.seller_id)
+              .single();
+            if (prof) setSeller(prof);
+          } else {
+            setSeller(raw.seller);
+          }
 
-    const [isArchiving, setIsArchiving] = useState(false);
-
-    const { showToast } = useToast();
-
-    // ... (existing code for state)
-
-    const handleArchive = async () => {
-        const isCurrentlyArchived = project?.is_archived;
-        const action = isCurrentlyArchived ? "unarchive" : "archive";
-
-        if (!confirm(`Are you sure you want to ${action} this project?`)) return;
-
-        setIsArchiving(true);
-        const { error } = await supabase
+          const { count } = await supabase
             .from('projects')
-            .update({ is_archived: !isCurrentlyArchived })
-            .eq('id', project.id);
+            .select('*', { count: 'exact', head: true })
+            .eq('seller_id', pData.seller_id)
+            .eq('is_archived', false);
 
-        if (error) {
-            console.error("Archive Error:", error);
-            showToast(`Error ${action}ing project: ` + error.message, "error");
-            setIsArchiving(false);
-        } else {
-            // Reload to reflect changes
-            window.location.reload();
+          if (count !== null) setSellerListingCount(count);
+
+          // Fetch More From This Seller (up to 3, live only)
+          const { data: sellerOthers } = await supabase
+            .from('projects')
+            .select('*, seller:profiles(*)')
+            .eq('seller_id', pData.seller_id)
+            .neq('id', projectId)
+            .eq('is_sold', false)
+            .eq('is_collab_filled', false)
+            .eq('is_archived', false)
+            .limit(3);
+
+          if (sellerOthers) {
+            setMoreFromSeller(sellerOthers as unknown as Project[]);
+          }
         }
-    };
 
-    const [isClaiming, setIsClaiming] = useState(false);
+        // 3. Fetch Similar Projects (same tech or mode, up to 3, live only)
+        const { data: similar } = await supabase
+          .from('projects')
+          .select('*, seller:profiles(*)')
+          .neq('id', projectId)
+          .eq('interaction_type', normalizedProject.interaction_type)
+          .eq('is_sold', false)
+          .eq('is_collab_filled', false)
+          .eq('is_archived', false)
+          .order('views', { ascending: false })
+          .limit(3);
 
-    const handleAction = async () => {
-        if (!user) {
-            showToast("ACCESS_DENIED: Please login to acquire assets.", "warning");
-            return;
+        if (similar) {
+          setSimilarProjects(similar as unknown as Project[]);
         }
 
-        // DIRECT CLAIM FOR FREE PROJECTS
-        if (project.interaction_type === 'adopt' || project.price === 0) {
-            if (!confirm("Confirm you want to claim this project for free?")) return;
+        // 4. Check Entitlement if signed in
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-            setIsClaiming(true);
-            try {
-                // Call Secure API to Claim
-                // Get Session Token
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) throw new Error("No active session");
+        if (session) {
+          const res = await fetch(`/api/project-access?projectId=${projectId}`, {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
 
-                const res = await fetch('/api/claim-project', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session.access_token}`
-                    },
-                    body: JSON.stringify({ projectId: project.id })
-                });
-
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Claim failed');
-
-                showToast("ASSET_ACQUIRED: Project claimed successfully.", "success");
-                // Refresh page
-                window.location.reload();
-            } catch (error: any) {
-                console.error("Error claiming project:", error);
-                showToast("CLAIM_FAILED: " + error.message, "error");
-            } finally {
-                setIsClaiming(false);
+          if (res.ok) {
+            const acc = await res.json();
+            if (acc.isEntitled) {
+              setIsEntitled(true);
+              setAccessData(acc);
             }
-            return;
+          }
         }
-
-        // Open Payment/Claim Modal
-        setIsPaymentOpen(true);
-    };
-
-    const handlePaymentSuccess = () => {
-        // Refresh page to update AuthContext (purchased_ids) and UI
-        window.location.reload();
-    };
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-cyber-black text-foreground flex flex-col">
-                <Header />
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-cyber-neon font-mono animate-pulse text-xl">
-                        ACCESSING_ARCHIVES...
-                    </div>
-                </div>
-                <Footer />
-            </div>
-        );
+      } catch (err) {
+        console.error('Project load failed:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
 
-    if (!project) {
-        return (
-            <div className="min-h-screen bg-cyber-black text-foreground flex flex-col">
-                <Header />
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-                    <ShieldAlert className="w-16 h-16 text-red-500" />
-                    <h1 className="text-2xl font-display text-white">FILE_CORRUPTED_OR_MISSING</h1>
-                    <Link href="/" className="text-cyber-neon hover:underline font-mono">
-                        // RETURN_TO_BASE
-                    </Link>
-                </div>
-                <Footer />
-            </div>
-        );
+    loadProjectData();
+  }, [projectId]);
+
+  // Handle post-login intent auto-opening
+  useEffect(() => {
+    if (!isLoading && project && initialIntent) {
+      if (initialIntent === 'buy' && !project.is_sold) {
+        setIsBuyModalOpen(true);
+      } else if (initialIntent === 'apply' && !project.is_collab_filled) {
+        setIsCollabModalOpen(true);
+      } else if (initialIntent === 'claim' && !isEntitled) {
+        handleClaim();
+      }
     }
+  }, [isLoading, project, initialIntent, isEntitled]);
 
-    const isOwner = user?.id === project.seller_id;
-    const isPurchased = user?.purchased_ids?.includes(project.id);
-    const isCollaborator = user?.collab_ids?.includes(project.id);
+  // Copy ID to clipboard
+  const copyId = () => {
+    if (!project) return;
+    navigator.clipboard.writeText(project.id);
+    setCopiedId(true);
+    toast.success('Project ID copied to clipboard');
+    setTimeout(() => setCopiedId(false), 2000);
+  };
 
-    // Determine Status Logic
-    let actionLabel = "";
-    let actionIcon = null;
-    let actionColor = "";
-
-    switch (project.interaction_type) {
-        case 'buy':
-            actionLabel = `PURCHASE (₹${project.price})`;
-            actionIcon = <IndianRupee className="w-5 h-5" />;
-            actionColor = "bg-cyber-neon text-cyber-black hover:shadow-glow-neon";
-            break;
-        case 'adopt':
-            actionLabel = "CLAIM FOR FREE";
-            actionIcon = <GitFork className="w-5 h-5" />;
-            actionColor = "bg-cyber-gray text-white hover:bg-white hover:text-black";
-            break;
-        case 'collab':
-            actionLabel = "REQUEST ACCESS";
-            actionIcon = <Users className="w-5 h-5" />;
-            actionColor = "bg-blue-600 text-white hover:bg-blue-500 hover:shadow-glow-blue";
-            break;
+  // Auth gate wrapper
+  const requireAuthOrRedirect = (intent: string) => {
+    if (!user) {
+      router.push(`/login?next=/project/${projectId}&intent=${intent}`);
+      return false;
     }
+    return true;
+  };
 
+  // Free claim execution
+  const handleClaim = async () => {
+    if (!requireAuthOrRedirect('claim')) return;
+    setIsClaiming(true);
+    const toastId = toast.loading('Claiming open source fork...');
+
+    try {
+      const res = await fetch('/api/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Claim failed');
+      }
+
+      toast.success(
+        data.alreadyClaimed
+          ? 'Already claimed! Access unlocked.'
+          : 'Project successfully claimed!',
+        { id: toastId }
+      );
+
+      setIsEntitled(true);
+      setAccessData({
+        hasArchive: data.hasArchive,
+        repoUrl: data.repoUrl,
+        inviteStatus: data.inviteStatus,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Claim failed';
+      toast.error(message, { id: toastId });
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  // Secure download trigger
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch(`/api/secure-download?projectId=${projectId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error?.message || 'Download failed');
+
+      // Trigger browser download via signed URL
+      window.location.href = data.downloadUrl;
+      toast.success('Download initiated');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Download failed';
+      toast.error(msg);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Retry GitHub invite if failed
+  const handleRetryInvite = async () => {
+    setIsRetryingInvite(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch('/api/retry-invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ projectId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Retry failed');
+
+      toast.success('Invitation resent! Check your GitHub email.');
+      setAccessData((prev) =>
+        prev ? { ...prev, inviteStatus: data.inviteStatus } : null
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Retry failed';
+      toast.error(msg);
+    } finally {
+      setIsRetryingInvite(false);
+    }
+  };
+
+  const isOwner = Boolean(user && project && user.id === project.seller_id);
+  const tombstone = project ? formatEpitaph(project) : '';
+
+  // Format last commit date string
+  const formattedLastCommit = useMemo(() => {
+    if (!project) return null;
+    const dateStr = project.last_commit_at || project.abandoned_on;
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }, [project]);
+
+  const deadForText = useMemo(() => {
+    return project?.abandoned_on ? formatDeadFor(project.abandoned_on) : null;
+  }, [project]);
+
+  if (isLoading) {
     return (
-        <div className="min-h-screen bg-cyber-black text-foreground selection:bg-cyber-red selection:text-white flex flex-col">
-            <Header />
-
-            <main className="flex-1 container mx-auto px-4 py-8 md:py-12">
-
-                {/* Back Button */}
-                <Link href={isOwner || isPurchased || isCollaborator ? "/dashboard" : "/"} className="inline-flex items-center text-cyber-muted hover:text-cyber-red transition-colors mb-8 font-mono text-lg group tracking-wide">
-                    <ArrowLeft className="w-5 h-5 mr-3 group-hover:-translate-x-1 transition-transform" />
-                    {isOwner || isPurchased || isCollaborator ? "Back to Dashboard" : "Back to Graveyard"}
-                </Link>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
-                    {/* Left Column: Visuals & Tech */}
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="lg:col-span-2 space-y-8"
-                    >
-                        {/* Header Box */}
-                        <div className="relative border border-cyber-gray/30 bg-cyber-dark/30 p-8 cyber-clip">
-                            <div className="absolute top-0 right-0 p-2">
-                                <span className={`inline-block px-3 py-1 text-xs font-bold font-mono border ${project.interaction_type === 'buy' ? 'border-cyber-neon text-cyber-neon' :
-                                    (project.interaction_type === 'collab' && project.is_collab_filled) ? 'border-purple-500 text-purple-500 shadow-glow-purple' :
-                                        project.interaction_type === 'collab' ? 'border-blue-500 text-blue-500' :
-                                            'border-white text-white'
-                                    }`}>
-                                    {(project.interaction_type === 'collab' && project.is_collab_filled) ? "PARTNERED" : project.interaction_type.toUpperCase()}
-                                </span>
-                            </div>
-
-                            <h1 className="font-display text-4xl md:text-6xl font-bold text-white mb-4 leading-tight">
-                                {project.title}
-                            </h1>
-
-                            <div className="flex flex-wrap items-center gap-6 text-cyber-muted font-mono text-sm max-w-2xl">
-                                <div className="flex items-center gap-2">
-                                    <UserIcon className="w-4 h-4" />
-                                    <span>SELLER: <span className="text-white">{seller?.username || "UNKNOWN_USER"}</span></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4" />
-                                    <span>UPLOADED: <span className="text-white w-32 truncate">{new Date(project.created_at).toLocaleDateString()}</span></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Eye className="w-4 h-4" />
-                                    <span>VIEWS: <span className="text-white">{project.views || 0}</span></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Description */}
-                        <div className="prose prose-invert max-w-none prose-p:text-cyber-muted prose-headings:font-display prose-headings:text-white">
-                            <h3 className="text-xl font-display font-bold text-white border-l-2 border-cyber-red pl-4 mb-4 uppercase tracking-wider">
-                                PROJECT MANIFEST
-                            </h3>
-                            <p className="whitespace-pre-wrap leading-relaxed">
-                                {project.description}
-                            </p>
-                        </div>
-
-                        {/* Tech Stack */}
-                        <div className="space-y-4">
-                            <h3 className="text-xl font-display font-bold text-white border-l-2 border-cyber-neon pl-4 uppercase tracking-wider">
-                                HARDWARE REQS
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {project.tech_stack.map((tech) => (
-                                    <TechBadge key={tech} tech={tech} />
-                                ))}
-                            </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Right Column: Action Panel */}
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="lg:col-span-1"
-                    >
-                        <div className="sticky top-24 border border-cyber-gray/30 bg-cyber-dark/50 p-6 cyber-clip backdrop-blur-sm space-y-6">
-
-                            {/* Terminal Header */}
-                            <div className="border-b border-cyber-gray/30 pb-4 mb-4">
-                                <div className="font-mono text-xs text-cyber-muted">
-                                    {(project.interaction_type === 'collab' && project.is_collab_filled && (isOwner || isCollaborator))
-                                        ? "WORKSPACE_TERMINAL"
-                                        : "TRANSACTION_TERMINAL"}
-                                </div>
-                                <div className="text-xs text-cyber-gray mt-1">ID: {project.id.slice(0, 8)}</div>
-                            </div>
-
-                            {/* Price / Contact Display */}
-                            <div className="text-center py-6 bg-cyber-black/50 cyber-clip-sm border border-cyber-gray/10">
-                                {(project.interaction_type === 'collab' && project.is_collab_filled && (isOwner || isCollaborator)) ? (
-                                    <>
-                                        <div className="text-cyber-muted text-xs font-mono mb-2 uppercase tracking-widest">
-                                            {isOwner ? "PARTNER IDENTITY" : "SELLER IDENTITY"}
-                                        </div>
-                                        <div className="text-xl font-display text-white mb-1">
-                                            {isOwner ? (partner?.username || "UNKNOWN") : (seller?.username || "UNKNOWN")}
-                                        </div>
-                                        <div className="text-xs font-mono text-cyber-neon break-all px-4">
-                                            {isOwner ? (partner?.contact_info || "NO_DATA") : (seller?.contact_info || "NO_DATA")}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="text-cyber-muted text-xs font-mono mb-2 uppercase tracking-widest">
-                                            Current Valuation
-                                        </div>
-                                        <div className="text-4xl font-display font-bold text-white">
-                                            {project.interaction_type === 'adopt' ? "FREE" : `₹${project.price}`}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="space-y-4">
-                                {!isOwner && (
-                                    <Link href={`/dashboard?tab=messages&chat_with=${project.seller_id}`}>
-                                        <CyberButton className="w-full bg-cyber-gray/20 text-white hover:bg-cyber-gray/40 border-cyber-gray/50 mb-3 block text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <MessageSquare className="w-4 h-4" />
-                                                <span>MESSAGE_SELLER</span>
-                                            </div>
-                                        </CyberButton>
-                                    </Link>
-                                )}
-
-                                {isOwner ? (
-                                    <div className="p-4 bg-cyber-red/10 border border-cyber-red/30 text-center">
-                                        <h3 className="text-cyber-red font-bold font-display uppercase tracking-widest mb-2">OWNER_ACCESS</h3>
-                                        <p className="text-xs text-cyber-muted mb-4">You own this artifact.</p>
-                                        <div className="flex flex-col gap-2">
-                                            <Link href={`/edit/${project.id}`} className="w-full">
-                                                <button className="w-full py-2 bg-cyber-red/20 text-cyber-red font-mono text-sm hover:bg-cyber-red/30 transition-colors uppercase border border-cyber-red/50">
-                                                    Edit Metadata
-                                                </button>
-                                            </Link>
-                                            <button
-                                                onClick={handleArchive}
-                                                disabled={isArchiving}
-                                                className="w-full py-2 bg-transparent text-cyber-muted font-mono text-sm hover:text-white transition-colors uppercase border border-cyber-gray/30 disabled:opacity-50"
-                                            >
-                                                {isArchiving ? "PROCESSING..." : project.is_archived ? "UNARCHIVE" : "ARCHIVE"}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : isCollaborator ? (
-                                    <div className="p-4 bg-blue-500/10 border border-blue-500/30 text-center">
-                                        <h3 className="text-blue-400 font-bold font-display uppercase tracking-widest mb-2">PARTNER_ACCESS</h3>
-                                        <div className="space-y-4">
-                                            <button
-                                                onClick={async () => {
-                                                    if (project.file_url) {
-                                                        try {
-                                                            const { data: { session } } = await supabase.auth.getSession();
-                                                            if (!session) throw new Error("No session");
-
-                                                            const res = await fetch('/api/secure-download', {
-                                                                method: 'POST',
-                                                                headers: {
-                                                                    'Content-Type': 'application/json',
-                                                                    'Authorization': `Bearer ${session.access_token}`
-                                                                },
-                                                                body: JSON.stringify({ projectId: project.id })
-                                                            });
-                                                            const data = await res.json();
-                                                            if (data.url) {
-                                                                window.open(data.url, '_blank');
-                                                            } else {
-                                                                throw new Error(data.error || "Download failed");
-                                                            }
-                                                        } catch (err: any) {
-                                                            showToast("DOWNLOAD_ERROR: " + err.message, "error");
-                                                        }
-                                                    } else {
-                                                        showToast("FILE_NOT_FOUND: No source attached.", "error");
-                                                    }
-                                                }}
-                                                className="w-full py-2 bg-blue-500/20 text-blue-400 font-bold font-mono hover:bg-blue-500/30 transition-all cyber-clip-sm flex items-center justify-center gap-2 text-xs"
-                                            >
-                                                <Cpu className="w-3 h-3" />
-                                                ACCESS_SOURCE
-                                            </button>
-
-                                            {project.repo_link && (
-                                                <button
-                                                    onClick={() => window.open(project.repo_link, '_blank')}
-                                                    className="w-full py-2 bg-purple-500/20 text-purple-400 font-bold font-mono hover:bg-purple-500/30 transition-all cyber-clip-sm flex items-center justify-center gap-2 text-xs mt-2"
-                                                >
-                                                    <GitFork className="w-3 h-3" />
-                                                    REPOSITORY
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : isPurchased ? (
-                                    <div className="p-4 bg-cyber-neon/10 border border-cyber-neon/30 text-center">
-                                        <h3 className="text-cyber-neon font-bold font-display uppercase tracking-widest mb-2">ACCESS_GRANTED</h3>
-                                        <button
-                                            onClick={async () => {
-                                                if (project.file_url) {
-                                                    try {
-                                                        const { data: { session } } = await supabase.auth.getSession();
-                                                        if (!session) throw new Error("No session");
-
-                                                        const res = await fetch('/api/secure-download', {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-                                                            body: JSON.stringify({ projectId: project.id })
-                                                        });
-                                                        const data = await res.json();
-                                                        if (data.url) window.open(data.url, '_blank');
-                                                        else showToast("DOWNLOAD_ERROR: " + (data.error || "Failed"), "error");
-                                                    } catch (err: any) {
-                                                        showToast("DOWNLOAD_ERROR: " + err.message, "error");
-                                                    }
-                                                } else {
-                                                    showToast("FILE_NOT_FOUND: No source attached.", "error");
-                                                }
-                                            }}
-                                            className="w-full py-3 bg-cyber-neon text-cyber-black font-bold font-mono hover:shadow-glow-neon transition-all cyber-clip-sm flex items-center justify-center gap-2"
-                                        >
-                                            <Cpu className="w-4 h-4" />
-                                            DOWNLOAD_SOURCE
-                                        </button>
-
-                                        {project.repo_link && (
-                                            <>
-                                                <button
-                                                    onClick={() => window.open(project.repo_link, '_blank')}
-                                                    className="w-full py-3 bg-purple-500/20 text-purple-400 font-bold font-mono hover:bg-purple-500/30 transition-all cyber-clip-sm flex items-center justify-center gap-2 mt-2"
-                                                >
-                                                    <GitFork className="w-4 h-4" />
-                                                    OPEN REPOSITORY
-                                                </button>
-                                                <p className="text-[10px] text-cyber-muted text-center mt-2 italic">
-                                                    *Access to the repository will be granted shortly. Check your GitHub notifications.
-                                                </p>
-                                            </>
-                                        )}
-                                    </div>
-                                ) : hasPendingRequest ? (
-                                    <div className="p-4 bg-blue-500/10 border border-blue-500/30 text-center">
-                                        <h3 className="text-blue-400 font-bold font-display uppercase tracking-widest mb-2">REQUEST_PENDING</h3>
-                                        <p className="text-xs text-cyber-muted mb-4">Waiting for seller confirmation.</p>
-                                        <button disabled className="w-full py-3 bg-blue-500/20 text-blue-400 font-bold font-mono cyber-clip-sm flex items-center justify-center gap-2 opacity-75 cursor-not-allowed">
-                                            <Users className="w-4 h-4" />
-                                            WAITING...
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        {project.repo_link && (
-                                            <div className="mb-4 p-3 bg-cyber-black/50 border border-cyber-gray/20 flex items-center gap-3 opacity-75">
-                                                <div className="p-2 bg-cyber-gray/20 rounded-full">
-                                                    <Lock className="w-4 h-4 text-cyber-muted" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <p className="text-xs font-bold text-cyber-muted font-display tracking-wider">REPOSITORY LOCKED</p>
-                                                    <p className="text-[10px] text-cyber-gray font-mono">
-                                                        Source code link hidden until access is granted.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={async () => {
-                                                if (!user) {
-                                                    router.push("/login");
-                                                    return;
-                                                }
-                                                if (project.interaction_type === 'collab') {
-                                                    // Open Collab Modal
-                                                    setIsCollabModalOpen(true);
-                                                } else {
-                                                    handleAction();
-                                                }
-                                            }}
-                                            className={`w-full py-4 font-bold tracking-widest cyber-clip-sm flex items-center justify-center gap-2 transition-all ${actionColor}`}
-                                        >
-                                            {actionIcon}
-                                            {actionLabel}
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Security Note */}
-                            <div className="flex items-start gap-3 pt-6 border-t border-cyber-gray/30">
-                                <ShieldAlert className="w-4 h-4 text-cyber-muted shrink-0 mt-0.5" />
-                                <p className="text-[10px] text-cyber-gray leading-tight">
-                                    The Graveyard verifies code integrity but does not guarantee runtime stability.
-                                    All acquisitions are final.
-                                </p>
-                            </div>
-
-                        </div >
-                    </motion.div >
-                </div >
-
-                {/* Payment Modal */}
-                {
-                    project && (
-                        <PaymentModal
-                            isOpen={isPaymentOpen}
-                            onClose={() => setIsPaymentOpen(false)}
-                            project={project}
-                            onSuccess={handlePaymentSuccess}
-                        />
-                    )
-                }
-
-                {/* Collab Request Modal */}
-                {project && (
-                    <CollabRequestModal
-                        isOpen={isCollabModalOpen}
-                        onClose={() => setIsCollabModalOpen(false)}
-                        onSubmit={async (contact, specialization) => {
-                            const { error } = await supabase.from('transactions').insert({
-                                project_id: project.id,
-                                buyer_id: user!.id,
-                                amount: 0,
-                                status: 'pending',
-                                payment_id: 'COLLAB_REQUEST',
-                                metadata: { contact, specialization }
-                            });
-                            if (error) {
-                                showToast("REQUEST_FAILED: " + error.message, "error");
-                                throw error;
-                            } else {
-                                setHasPendingRequest(true);
-                                showToast("REQUEST_SENT: Seller notified of interest.", "success");
-                            }
-                        }}
-                        projectTitle={project.title}
-                    />
-                )}
-            </main >
-            <Footer />
-        </div >
+      <div className="min-h-screen bg-bg flex flex-col">
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full animate-pulse">
+          <div className="h-6 w-32 bg-surface-2 rounded-full mb-8" />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <div className="lg:col-span-8 space-y-6">
+              <div className="aspect-[16/10] w-full bg-surface-2 rounded-card" />
+              <div className="h-10 w-3/4 bg-surface-2 rounded-lg" />
+              <div className="h-4 w-1/2 bg-surface-2 rounded" />
+            </div>
+            <div className="lg:col-span-4 h-96 bg-surface-2 rounded-card" />
+          </div>
+        </main>
+        <Footer />
+      </div>
     );
+  }
+
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col">
+        <Header />
+        <main className="flex-1 max-w-4xl mx-auto px-4 py-24 text-center">
+          <h1 className="text-3xl font-display font-semibold text-white mb-4">
+            Codebase Not Found
+          </h1>
+          <p className="font-sans text-muted mb-8">
+            This repository may have been permanently purged or does not exist.
+          </p>
+          <Button variant="primary" onClick={() => router.push('/')}>
+            Back to Marketplace
+          </Button>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const effectiveCover = project.cover_url || (project.screenshots && project.screenshots.length > 0 ? project.screenshots[0] : null);
+
+  return (
+    <div className="min-h-screen bg-bg text-fg flex flex-col selection:bg-brand-red selection:text-white">
+      <Header />
+
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full">
+        {/* Back Link */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 font-sans text-sm font-medium text-muted hover:text-white mb-8 transition-colors group"
+        >
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+          <span>Back to marketplace</span>
+        </Link>
+
+        {/* 12-Column Main Layout: Left (8 cols) + Right (4 cols sticky) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          {/* ========================================================= */}
+          {/* LEFT COLUMN: FULL PROJECT PROFILE */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-8 space-y-10">
+            {/* 1. HERO HEADER */}
+            <div className="space-y-6">
+              {/* Cover Art / Image Hero */}
+              <div
+                style={{ viewTransitionName: 'project-cover' }}
+                className="relative aspect-[16/10] w-full overflow-hidden rounded-card bg-surface border border-line shadow-2xl"
+              >
+                {effectiveCover ? (
+                  <Image
+                    src={effectiveCover}
+                    alt={project.title}
+                    fill
+                    priority
+                    unoptimized
+                    sizes="(max-width: 1024px) 100vw, 65vw"
+                    className="object-cover"
+                  />
+                ) : (
+                  <CoverArt
+                    id={project.id}
+                    title={project.title}
+                    mode={project.interaction_type}
+                  />
+                )}
+
+                {/* Top Badge Overlay */}
+                <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+                  <ModeBadge mode={project.interaction_type} size="md" />
+                  {project.is_sold && <StatusBadge status="sold" />}
+                  {project.is_collab_filled && <StatusBadge status="filled" />}
+                </div>
+
+                {/* Completion Chip Top-Right */}
+                {project.completion_percent != null && (
+                  <div className="absolute top-4 right-4 z-10 font-mono text-xs font-medium text-white/90 px-3 py-1 rounded-full bg-black/85 border border-white/15 tabular-nums">
+                    {project.completion_percent}% built
+                  </div>
+                )}
+              </div>
+
+              {/* Title & Tagline */}
+              <div className="space-y-2">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-semibold text-white tracking-tight leading-[1.1]">
+                  {project.title}
+                </h1>
+
+                {project.tagline && (
+                  <p className="font-sans text-lg sm:text-xl text-fg/90 leading-snug">
+                    {project.tagline}
+                  </p>
+                )}
+
+                {/* Tombstone line in mono */}
+                {tombstone && (
+                  <p className="font-mono text-xs text-muted uppercase tracking-wider pt-1">
+                    {tombstone}
+                  </p>
+                )}
+              </div>
+
+              {/* Epitaph Pull-quote */}
+              {project.epitaph && (
+                <div className="p-5 rounded-2xl bg-surface border border-line/80 relative">
+                  <span className="font-mono text-[10px] text-brand-red uppercase tracking-widest block mb-1">
+                    Epitaph
+                  </span>
+                  <p className="font-serif italic text-white text-xl sm:text-2xl leading-relaxed">
+                    &ldquo;{project.epitaph}&rdquo;
+                  </p>
+                </div>
+              )}
+
+              {/* Meta Row: uploaded date, views, license, live demo */}
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-3 border-y border-line text-xs font-mono text-muted">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-muted/80" />
+                  <span>
+                    Listed {new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-muted/80" />
+                  <span>{project.views || 0} views</span>
+                </div>
+
+                {project.license && (
+                  <div className="flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-muted/80" />
+                    <span>{project.license}</span>
+                  </div>
+                )}
+
+                {project.demo_url && (
+                  <a
+                    href={project.demo_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-white hover:text-brand-red ml-auto font-sans font-medium transition-colors"
+                  >
+                    <span>Live demo</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* 2. SCREENSHOT GALLERY & LIGHTBOX (if screenshots exist) */}
+            {project.screenshots && project.screenshots.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-sans font-semibold text-lg text-white">
+                  Interface Screenshots
+                </h3>
+                <ScreenshotGallery
+                  screenshots={project.screenshots}
+                  title={project.title}
+                />
+              </div>
+            )}
+
+            {/* 3. STATUS AT DEATH (Unboxed stat row with large numbers) */}
+            {(project.completion_percent != null || project.lines_of_code != null || formattedLastCommit || deadForText) && (
+              <div className="p-6 rounded-card bg-surface border border-line space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
+                  {project.completion_percent != null && (
+                    <div>
+                      <span className="font-mono text-[11px] text-muted uppercase tracking-wider block">
+                        Completion
+                      </span>
+                      <span className="font-sans font-semibold text-2xl sm:text-3xl text-white tabular-nums">
+                        {project.completion_percent}%
+                      </span>
+                    </div>
+                  )}
+
+                  {project.lines_of_code != null && (
+                    <div>
+                      <span className="font-mono text-[11px] text-muted uppercase tracking-wider block">
+                        Lines of code
+                      </span>
+                      <span className="font-mono font-medium text-2xl sm:text-3xl text-white tabular-nums">
+                        {formatLOC(project.lines_of_code)}
+                      </span>
+                    </div>
+                  )}
+
+                  {formattedLastCommit && (
+                    <div>
+                      <span className="font-mono text-[11px] text-muted uppercase tracking-wider block">
+                        Last commit
+                      </span>
+                      <span className="font-sans font-semibold text-2xl sm:text-3xl text-white">
+                        {formattedLastCommit}
+                      </span>
+                    </div>
+                  )}
+
+                  {deadForText && (
+                    <div>
+                      <span className="font-mono text-[11px] text-muted uppercase tracking-wider block">
+                        Dead for
+                      </span>
+                      <span className="font-mono font-medium text-2xl sm:text-3xl text-brand-red tabular-nums">
+                        {deadForText}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Thin progress bar */}
+                {project.completion_percent != null && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="w-full h-1.5 rounded-full bg-surface-2 overflow-hidden">
+                      <div
+                        className="h-full bg-brand-red rounded-full transition-all duration-500"
+                        style={{ width: `${project.completion_percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. ABOUT THIS PROJECT (Sanitized Markdown) */}
+            <div className="space-y-3">
+              <h3 className="font-sans font-semibold text-xl text-white">
+                About this project
+              </h3>
+              <div className="p-6 rounded-card bg-surface border border-line">
+                <MarkdownRenderer
+                  content={project.description || 'No detailed documentation has been published.'}
+                />
+              </div>
+            </div>
+
+            {/* 5. WHAT WORKS / WHAT'S LEFT */}
+            {((project.features && project.features.length > 0) || (project.todo_items && project.todo_items.length > 0)) && (
+              <div className="space-y-4">
+                <h3 className="font-sans font-semibold text-xl text-white">
+                  State of the codebase
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left: What works */}
+                  {project.features && project.features.length > 0 && (
+                    <div className="p-5 rounded-card bg-surface border border-line space-y-3">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-neon-green" />
+                        <h4 className="font-sans font-semibold text-base text-white">
+                          What works
+                        </h4>
+                      </div>
+                      <ul className="space-y-2">
+                        {project.features.map((item, idx) => (
+                          <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-fg/85">
+                            <span className="text-neon-green font-bold shrink-0 mt-0.5">✓</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Right: What's left */}
+                  {project.todo_items && project.todo_items.length > 0 && (
+                    <div className="p-5 rounded-card bg-surface border border-line space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Circle className="w-4 h-4 text-amber" />
+                        <h4 className="font-sans font-semibold text-base text-white">
+                          What&apos;s left / Known gaps
+                        </h4>
+                      </div>
+                      <ul className="space-y-2">
+                        {project.todo_items.map((item, idx) => (
+                          <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-fg/80">
+                            <span className="text-amber font-bold shrink-0 mt-0.5">○</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 6. TECH STACK */}
+            {project.tech_stack && project.tech_stack.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-sans font-semibold text-xl text-white">
+                  Built with
+                </h3>
+                <div className="flex flex-wrap items-center gap-2 p-5 rounded-card bg-surface border border-line">
+                  {project.tech_stack.map((tech) => (
+                    <TechBadge key={tech} tech={tech} size="md" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 7. WHAT'S INSIDE (File tree viewer) */}
+            {project.file_tree && project.file_tree.length > 0 && (
+              <FileTreeViewer paths={project.file_tree} />
+            )}
+
+            {/* 8. SETUP NOTES */}
+            {project.setup_notes && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-brand-red" />
+                  <h3 className="font-sans font-semibold text-xl text-white">
+                    Setup &amp; Running
+                  </h3>
+                </div>
+                <div className="p-6 rounded-card bg-surface border border-line">
+                  <MarkdownRenderer content={project.setup_notes} />
+                </div>
+              </div>
+            )}
+
+            {/* 9. COLLAB ROLES (For collab listings) */}
+            {project.interaction_type === 'collab' && project.collab_roles && project.collab_roles.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-accent" />
+                  <h3 className="font-sans font-semibold text-xl text-white">
+                    Open collaboration roles
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {project.collab_roles.map((role: CollabRole, rIdx: number) => (
+                    <div
+                      key={rIdx}
+                      className="p-5 rounded-card bg-surface border border-line space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-sans font-semibold text-base text-white">
+                          {role.role}
+                        </h4>
+                        <span className="font-mono text-[11px] text-blue-accent px-2 py-0.5 rounded-full bg-blue-accent/10 border border-blue-accent/30 shrink-0">
+                          {role.commitment}
+                        </span>
+                      </div>
+                      <p className="font-sans text-xs text-fg/80 leading-relaxed">
+                        {role.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {project.collab_terms && (
+                  <div className="p-4 rounded-xl bg-blue-accent/10 border border-blue-accent/20 flex items-center justify-between gap-4">
+                    <span className="font-sans text-xs sm:text-sm text-blue-accent/90">
+                      <strong>Compensation Terms:</strong> {project.collab_terms}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 10. RECOMMENDATIONS: More from this seller & Similar projects */}
+            {(moreFromSeller.length > 0 || similarProjects.length > 0) && (
+              <div className="pt-8 border-t border-line space-y-8">
+                {moreFromSeller.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="font-sans font-semibold text-lg text-white">
+                      More from @{seller?.username || 'operative'}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {moreFromSeller.map((p) => (
+                        <CompactProjectCard key={p.id} project={p} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {similarProjects.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="font-sans font-semibold text-lg text-white">
+                      Similar codebases
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {similarProjects.map((p) => (
+                        <CompactProjectCard key={p.id} project={p} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ========================================================= */}
+          {/* RIGHT COLUMN: STICKY MODE-SPECIFIC ACTION PANEL */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
+            <div className="rounded-card bg-surface border border-line p-6 shadow-xl space-y-6">
+              {/* Header: Mode & Price */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="font-mono text-xs text-muted uppercase tracking-wider block mb-1">
+                    {project.interaction_type === 'buy' ? 'Acquisition Price' : 'Listing Mode'}
+                  </span>
+                  <div className="font-mono text-3xl font-bold text-white tabular-nums">
+                    {project.interaction_type === 'buy'
+                      ? formatINR(project.price_paise, { showFreeForZero: false })
+                      : project.interaction_type === 'adopt'
+                      ? 'Free'
+                      : 'Open Collab'}
+                  </div>
+                </div>
+                <ModeBadge mode={project.interaction_type} size="md" />
+              </div>
+
+              {/* ACTION BUTTONS (Context-Aware) */}
+              <div className="space-y-3">
+                {isOwner ? (
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-xl bg-surface-2 border border-line flex items-center gap-2 text-xs font-mono text-white">
+                      <UserCheck className="w-4 h-4 text-neon-green" />
+                      <span>You are the author of this listing</span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => router.push(`/edit/${project.id}`)}
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span>Edit Listing Details</span>
+                    </Button>
+                  </div>
+                ) : isEntitled ? (
+                  <div className="space-y-3 p-4 rounded-xl bg-neon-green/10 border border-neon-green/30">
+                    <div className="flex items-center gap-2 text-neon-green font-mono text-xs font-semibold">
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>ACCESS UNLOCKED (VAULT)</span>
+                    </div>
+
+                    {accessData?.hasArchive && (
+                      <Button
+                        variant="primary"
+                        className="w-full !bg-neon-green !text-black"
+                        onClick={handleDownload}
+                        disabled={isDownloading}
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>{isDownloading ? 'Preparing ZIP...' : 'Download Code Archive'}</span>
+                      </Button>
+                    )}
+
+                    {accessData?.repoUrl && (
+                      <div className="space-y-2">
+                        <a
+                          href={accessData.repoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full bg-white text-black font-sans font-semibold text-sm hover:bg-neutral-200 transition-colors"
+                        >
+                          <Github className="w-4 h-4" />
+                          <span>Open GitHub Repository</span>
+                        </a>
+
+                        {accessData.inviteStatus === 'failed' && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={handleRetryInvite}
+                            disabled={isRetryingInvite}
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Retry Collaborator Invitation</span>
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : project.is_sold ? (
+                  <Button variant="secondary" disabled className="w-full opacity-60 cursor-not-allowed">
+                    <Archive className="w-4 h-4" />
+                    <span>Project Sold Out</span>
+                  </Button>
+                ) : project.is_collab_filled ? (
+                  <Button variant="secondary" disabled className="w-full opacity-60 cursor-not-allowed">
+                    <Users className="w-4 h-4" />
+                    <span>Collaboration Filled</span>
+                  </Button>
+                ) : project.interaction_type === 'buy' ? (
+                  <Button
+                    variant="primary"
+                    mode="buy"
+                    className="w-full !h-12 !text-base"
+                    onClick={() => {
+                      if (requireAuthOrRedirect('buy')) {
+                        setIsBuyModalOpen(true);
+                      }
+                    }}
+                  >
+                    <span>Acquire Codebase</span>
+                  </Button>
+                ) : project.interaction_type === 'adopt' ? (
+                  <Button
+                    variant="primary"
+                    mode="adopt"
+                    className="w-full !h-12 !text-base"
+                    onClick={handleClaim}
+                    disabled={isClaiming}
+                  >
+                    <span>{isClaiming ? 'Claiming Fork...' : 'Claim & Fork Code'}</span>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    mode="collab"
+                    className="w-full !h-12 !text-base"
+                    onClick={() => {
+                      if (requireAuthOrRedirect('apply')) {
+                        setIsCollabModalOpen(true);
+                      }
+                    }}
+                  >
+                    <span>Apply for Collaboration</span>
+                  </Button>
+                )}
+              </div>
+
+              {/* WHAT YOU GET CHECKLIST (Data-Driven) */}
+              <div className="space-y-3 pt-4 border-t border-line">
+                <span className="font-mono text-xs text-muted uppercase tracking-wider block">
+                  What you get
+                </span>
+                <ul className="space-y-2 text-xs sm:text-sm font-sans text-fg/85">
+                  {project.has_archive && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-neon-green shrink-0" />
+                      <span>Full source code archive (.zip)</span>
+                    </li>
+                  )}
+                  {project.has_repo && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-neon-green shrink-0" />
+                      <span>Direct GitHub repository invitation</span>
+                    </li>
+                  )}
+                  {project.license && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-neon-green shrink-0" />
+                      <span>{project.license} license rights</span>
+                    </li>
+                  )}
+                  {project.setup_notes && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-neon-green shrink-0" />
+                      <span>Setup &amp; configuration documentation</span>
+                    </li>
+                  )}
+                  {project.demo_url && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-neon-green shrink-0" />
+                      <span>Live demonstration preview</span>
+                    </li>
+                  )}
+                  {project.interaction_type === 'collab' && (
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-blue-accent shrink-0" />
+                      <span>{project.collab_roles?.length || 1} defined role slots ({project.collab_terms || 'Terms to discuss'})</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {/* SELLER PROFILE CARD */}
+              <div className="pt-4 border-t border-line space-y-3">
+                <span className="font-mono text-xs text-muted uppercase tracking-wider block">
+                  Original Author
+                </span>
+                <div className="flex items-start gap-3">
+                  <Avatar
+                    src={seller?.avatar_url}
+                    username={seller?.username || 'operative'}
+                    size="md"
+                    className="w-10 h-10 shrink-0"
+                  />
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-sans font-semibold text-sm text-white truncate">
+                        @{seller?.username || 'operative'}
+                      </span>
+                      {seller?.reputation_score != null && (
+                        <span className="font-mono text-[10px] text-neon-green/90 px-1.5 py-0.5 rounded-full bg-neon-green/10 border border-neon-green/30">
+                          {seller.reputation_score} rep
+                        </span>
+                      )}
+                    </div>
+                    {seller?.bio && (
+                      <p className="font-sans text-xs text-muted line-clamp-2 leading-relaxed">
+                        {seller.bio}
+                      </p>
+                    )}
+                    <span className="font-mono text-[11px] text-muted/70 block">
+                      {sellerListingCount} {sellerListingCount === 1 ? 'project listed' : 'projects listed'}
+                    </span>
+                  </div>
+                </div>
+
+                {!isOwner && user && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted hover:text-white"
+                    onClick={() => router.push(`/dashboard?tab=messages&to=${project.seller_id}`)}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Send Message to Seller</span>
+                  </Button>
+                )}
+              </div>
+
+              {/* Project ID copy chip */}
+              <div className="pt-3 border-t border-line/60 flex items-center justify-between text-[11px] font-mono text-muted">
+                <span>PROJECT_ID</span>
+                <button
+                  type="button"
+                  onClick={copyId}
+                  className="flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  <span className="max-w-[120px] truncate">{project.id}</span>
+                  {copiedId ? <Check className="w-3 h-3 text-neon-green" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0b]/95 border-t border-line p-4 flex items-center justify-between gap-4">
+        <div>
+          <span className="font-mono text-xs text-muted block">
+            {project.interaction_type === 'buy' ? 'Price' : 'Mode'}
+          </span>
+          <span className="font-mono text-lg font-bold text-white">
+            {project.interaction_type === 'buy'
+              ? formatINR(project.price_paise, { showFreeForZero: false })
+              : project.interaction_type === 'adopt'
+              ? 'Free'
+              : 'Collab'}
+          </span>
+        </div>
+
+        {isOwner ? (
+          <Button variant="secondary" size="sm" onClick={() => router.push(`/edit/${project.id}`)}>
+            Edit Listing
+          </Button>
+        ) : isEntitled ? (
+          <Button variant="primary" mode="buy" size="sm" onClick={handleDownload} disabled={isDownloading}>
+            Download ZIP
+          </Button>
+        ) : project.is_sold || project.is_collab_filled ? (
+          <Button variant="secondary" size="sm" disabled>
+            Closed
+          </Button>
+        ) : project.interaction_type === 'buy' ? (
+          <Button variant="primary" mode="buy" size="sm" onClick={() => requireAuthOrRedirect('buy') && setIsBuyModalOpen(true)}>
+            Acquire
+          </Button>
+        ) : project.interaction_type === 'adopt' ? (
+          <Button variant="primary" mode="adopt" size="sm" onClick={handleClaim} disabled={isClaiming}>
+            Claim Free
+          </Button>
+        ) : (
+          <Button variant="primary" mode="collab" size="sm" onClick={() => requireAuthOrRedirect('apply') && setIsCollabModalOpen(true)}>
+            Apply
+          </Button>
+        )}
+      </div>
+
+      <Footer />
+
+      {/* Payment Checkout Modal */}
+      {isBuyModalOpen && (
+        <PaymentModal
+          isOpen={isBuyModalOpen}
+          onClose={() => setIsBuyModalOpen(false)}
+          project={project}
+          onSuccess={() => {
+            setIsBuyModalOpen(false);
+            setIsEntitled(true);
+            setProject((prev) => (prev ? { ...prev, is_sold: true } : null));
+          }}
+        />
+      )}
+
+      {/* Collab Request Application Modal */}
+      {isCollabModalOpen && (
+        <CollabRequestModal
+          isOpen={isCollabModalOpen}
+          onClose={() => setIsCollabModalOpen(false)}
+          project={project}
+          onSuccess={() => {
+            setIsCollabModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
 }

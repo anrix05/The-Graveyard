@@ -1,6 +1,6 @@
 
 import dotenv from 'dotenv';
-import { inviteCollaborator } from './src/lib/github';
+import { inviteCollaborator } from '../src/lib/github';
 
 // Load environment variables for local testing
 dotenv.config({ path: '.env.local' });

@@ -1,802 +1,1137 @@
-"use client";
+'use client';
 
-import { useState, useEffect, Suspense } from "react";
-import { motion } from "framer-motion";
-import { Package, ShoppingBag, Users, Plus, Settings, IndianRupee, Check, X, Github, MessageSquare, ChevronDown } from "lucide-react";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import CyberCard from "@/components/CyberCard";
-import CyberButton from "@/components/ui/CyberButton";
-import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { mockProjects } from "@/data/mockProjects";
-import { Project } from "@/types/project";
-import { Transaction } from "@/types/transaction";
-import OperativeCard from "@/components/OperativeCard";
-// import ChatInterface from "@/components/ChatInterface"; // Switched to dynamic import
-import dynamic from "next/dynamic";
+import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Layers,
+  Shield,
+  DollarSign,
+  Users,
+  MessageSquare,
+  Settings,
+  PlusCircle,
+  ExternalLink,
+  Download,
+  Trash2,
+  Edit,
+  Eye,
+  CheckCircle,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Button from '@/components/ui/Button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import StatCard from '@/components/ui/StatCard';
+import EmptyState from '@/components/ui/EmptyState';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { ModeBadge, StatusBadge } from '@/components/ui/badge';
+import Avatar from '@/components/ui/Avatar';
+import CoverArt from '@/components/CoverArt';
+import ChatInterface from '@/components/ChatInterface';
+import { Project, Profile } from '@/types/project';
+import { Transaction } from '@/types/transaction';
+import { CollabRequest } from '@/types/collab';
+import { formatINR } from '@/lib/format';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
-const ChatInterface = dynamic(() => import("@/components/ChatInterface"), {
-    loading: () => <div className="p-8 text-center text-cyber-neon font-mono animate-pulse">INITIALIZING_SECURE_CHANNEL...</div>,
-    ssr: false // Chat is client-only anyway
-});
+type DashboardTab = 'overview' | 'listings' | 'vault' | 'sales' | 'collabs' | 'messages' | 'settings';
 
-import { useAuth } from "@/context/AuthContext";
-import { useToast } from "@/context/ToastContext";
-import { supabase } from "@/lib/supabase";
-
-
-// Filter mock projects for different tabs (Simulation)
-const myUploads = mockProjects.slice(0, 3);
-const purchased = mockProjects.slice(3, 5);
-const collaborations = mockProjects.slice(5, 7);
-
-const TABS = [
-    { id: "uploads", label: "MY UPLOADS", icon: Package },
-    { id: "purchased", label: "PURCHASED", icon: ShoppingBag },
-    { id: "sold", label: "SOLD", icon: IndianRupee },
-    { id: "collab", label: "COLLABS", icon: Users },
-    { id: "messages", label: "MESSAGES", icon: MessageSquare },
-    { id: "settings", label: "SETTINGS", icon: Settings },
+const TABS: { id: DashboardTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'listings', label: 'My Listings', icon: Layers },
+  { id: 'vault', label: 'Vault', icon: Shield },
+  { id: 'sales', label: 'Sales', icon: DollarSign },
+  { id: 'collabs', label: 'Collabs', icon: Users },
+  { id: 'messages', label: 'Messages', icon: MessageSquare },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 function DashboardContent() {
-    const { user } = useAuth();
-    const { showToast } = useToast();
-    const searchParams = useSearchParams();
-    const router = useRouter();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
 
-    const initialTab = searchParams.get("tab") || "uploads";
-    // Ensure tab exists in our allowed list, else default to uploads
-    const validTabs = ["uploads", "purchased", "sold", "collab", "messages", "settings"];
-    const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : "uploads");
-    const [isTabMenuOpen, setIsTabMenuOpen] = useState(false); // Mobile menu state
+  const tabParam = (searchParams.get('tab') as DashboardTab) || 'overview';
+  const recipientParam = searchParams.get('recipient');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(tabParam);
 
-    // State can hold Projects OR Transactions depending on tab
-    const [projects, setProjects] = useState<(Project | Transaction)[]>([]);
-    const [requests, setRequests] = useState<Transaction[]>([]); // Incoming collab requests
-    const [activePartners, setActivePartners] = useState<Transaction[]>([]); // Accepted collab requests
-    const [isLoading, setIsLoading] = useState(true);
+  // Data states
+  const [myProjects, setMyProjects] = useState<Project[]>([]);
+  const [vaultTransactions, setVaultTransactions] = useState<Transaction[]>([]);
+  const [salesTransactions, setSalesTransactions] = useState<Transaction[]>([]);
+  const [receivedPitches, setReceivedPitches] = useState<CollabRequest[]>([]);
+  const [myPitches, setMyPitches] = useState<CollabRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    // Update activeTab when URL changes
-    useEffect(() => {
-        const tab = searchParams.get("tab");
-        if (tab && validTabs.includes(tab)) {
-            setActiveTab(tab);
-        }
-    }, [searchParams]);
+  // Delete modal state
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-    // Update URL when tab changes (optional, but good for UX)
-    const handleTabChange = (tabId: string) => {
-        setActiveTab(tabId);
-        // Shallow routing to update URL without reload
-        router.push(`/dashboard?tab=${tabId}`, { scroll: false });
-    };
+  // Settings form
+  const [settingsUsername, setSettingsUsername] = useState('');
+  const [settingsBio, setSettingsBio] = useState('');
+  const [settingsContact, setSettingsContact] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-    // Settings State
-    // Settings State
-    const [username, setUsername] = useState("");
-    const [upiId, setUpiId] = useState("");
-    const [contactInfo, setContactInfo] = useState("");
-    const [phoneNumber, setPhoneNumber] = useState("");
-    const [isSaving, setIsSaving] = useState(false);
+  // Sync tab with URL
+  useEffect(() => {
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
-    // Fetch User's Projects whenever tab or user changes
-    useEffect(() => {
-        const fetchProjects = async () => {
-            if (!user) return;
-            setIsLoading(true);
-            setProjects([]); // Clear old data first
+  const switchTab = (tab: DashboardTab) => {
+    setActiveTab(tab);
+    router.replace(`/dashboard?tab=${tab}`, { scroll: false });
+  };
 
-            // Special Case: Fetch Settings
-            if (activeTab === 'settings') {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('username, upi_id, contact_info, phone_number')
-                    .eq('id', user.id)
-                    .single();
+  // Initial Data Fetch
+  useEffect(() => {
+    if (!user) return;
 
-                if (data) {
-                    setUsername(data.username || "");
-                    setUpiId(data.upi_id || "");
-                    setContactInfo(data.contact_info || "");
-                    setPhoneNumber(data.phone_number || "");
-                }
-                setIsLoading(false);
-                return;
+    const fetchAllDashboardData = async () => {
+      setIsLoading(true);
+      try {
+        // 1. My projects
+        const { data: projs } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('seller_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (projs) {
+          const normalized: Project[] = (projs as any[]).map((p) => {
+            let pricePaise = 0;
+            if (p.price_paise !== undefined && p.price_paise !== null) {
+              pricePaise = Number(p.price_paise);
+            } else if (p.price !== undefined && p.price !== null) {
+              pricePaise = Math.round(Number(p.price) * 100);
             }
-
-            try {
-                if (activeTab === 'sold') {
-                    // Fetch Transactions for Sold Items
-                    const { data, error } = await supabase
-                        .from('transactions')
-                        .select('*, project:projects!inner(title, seller_id), buyer:profiles(username)')
-                        .eq('project.seller_id', user.id)
-                        .eq('status', 'completed')
-                        .gt('amount', 0)
-                        .order('created_at', { ascending: false });
-
-                    if (error) throw error;
-                    setProjects(data || []);
-
-                } else if (activeTab === 'collab') {
-                    // 1. Fetch Incoming Requests (I am seller, status pending)
-                    const { data: incoming, error: incomingError } = await supabase
-                        .from('transactions')
-                        .select('*, project:projects!inner(title, seller_id), buyer:profiles(username)')
-                        .eq('project.seller_id', user.id)
-                        .eq('status', 'pending')
-                        .eq('payment_id', 'COLLAB_REQUEST')
-                        .order('created_at', { ascending: false });
-
-                    if (incomingError) console.error("Error fetching requests:", incomingError);
-                    setRequests(incoming || []);
-
-                    // 1.5 Fetch Active Partners (I am seller, status completed)
-                    const { data: partners, error: partnersError } = await supabase
-                        .from('transactions')
-                        .select('*, project:projects!inner(*), buyer:profiles(*)') // Get full project + partner info
-                        .eq('project.seller_id', user.id)
-                        .eq('status', 'completed')
-                        .eq('payment_id', 'COLLAB_REQUEST')
-                        .order('created_at', { ascending: false });
-
-                    if (partnersError) console.error("Error fetching partners:", partnersError);
-                    // MERGE PARTNERS into main projects list
-
-                    // 2. Fetch Active Collaborations (I am buyer/collab, status completed)
-                    const { data: activeCollabs, error: activeCollabsError } = await supabase
-                        .from('transactions')
-                        .select('project:projects(*, seller:profiles(username, contact_info))')
-                        .eq('buyer_id', user.id)
-                        .eq('status', 'completed')
-                        .eq('payment_id', 'COLLAB_REQUEST')
-                        .order('created_at', { ascending: false });
-
-                    if (activeCollabsError) throw activeCollabsError;
-
-                    // Prepare Seller Projects (where I am owner, showing Partner's info)
-                    const sellerProjects = partners?.map((t: any) => ({
-                        ...t.project,
-                        seller: t.buyer // Map partner to 'seller' prop so card shows them as the contact
-                    })).filter(Boolean) || [];
-
-                    // Prepare Buyer Projects (where I am collaborator, showing Owner's info)
-                    const buyerProjects = activeCollabs?.map((t: any) => t.project).filter(Boolean) || [];
-
-                    // Combine and Deduplicate
-                    const combined = [...sellerProjects, ...buyerProjects];
-                    const uniqueProjects = Array.from(new Map(combined.map(item => [item.id, item])).values());
-
-                    setProjects(uniqueProjects);
-
-                } else if (activeTab === 'purchased') {
-                    // Fetch Purchased/Claimed Projects via Transactions
-                    const { data, error } = await supabase
-                        .from('transactions')
-                        .select('project:projects(*)')
-                        .eq('buyer_id', user.id)
-                        .eq('status', 'completed')
-                        .order('created_at', { ascending: false });
-
-                    if (error) throw error;
-                    // Map transactions to projects, filtering out 'collab' which belong in Collaborations tab
-                    setProjects(data?.map((t: any) => t.project)
-                        .filter((p: any) => p && p.interaction_type !== 'collab') // EXCLUDE Collab
-                        || []
-                    );
-
-                } else {
-                    let query = supabase.from('projects').select('*');
-
-                    if (activeTab === 'uploads') {
-                        // Fetch projects where seller_id is current user
-                        query = query.eq('seller_id', user.id);
-                    }
-
-                    const { data, error } = await query;
-                    if (error) throw error;
-                    setProjects(data || []);
-                }
-
-            } catch (error) {
-                console.error("Error fetching dashboard projects:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchProjects();
-    }, [user, activeTab]);
-
-    // ... (existing code)
-
-    // ... (existing code)
-
-    const handleAccept = async (transactionId: string) => {
-        if (!confirm("Accept this collaboration request?")) return;
-
-        const { error } = await supabase
-            .from('transactions')
-            .update({ status: 'completed' })
-            .eq('id', transactionId)
-            .select('project_id') // Get project ID
-            .single();
-
-        if (error) {
-            showToast("ERROR: " + error.message, "error");
-            return;
+            return {
+              ...p,
+              price_paise: pricePaise,
+              cause_of_death: p.cause_of_death || 'other',
+              abandoned_on: p.abandoned_on || null,
+              last_commit_at: p.last_commit_at || null,
+              epitaph: p.epitaph || null,
+              revived_at: p.revived_at || null,
+            };
+          });
+          setMyProjects(normalized);
         }
 
-        // Also mark project as filled
-        const { data: transactionData } = await supabase.from('transactions').select('project_id').eq('id', transactionId).single();
+        // 2. Vault: transactions where user is buyer
+        const { data: vault } = await supabase
+          .from('transactions')
+          .select(`
+            *,
+            project:projects(*)
+          `)
+          .eq('buyer_id', user.id)
+          .order('created_at', { ascending: false });
 
-        if (transactionData?.project_id) {
-            const { error: projectError } = await supabase
-                .from('projects')
-                .update({ is_collab_filled: true })
-                .eq('id', transactionData.project_id);
+        if (vault) setVaultTransactions(vault as Transaction[]);
 
-            if (!projectError) {
-                // Update local projects state if present
-                setProjects(prevProjects => prevProjects.map(p =>
-                    p.id === transactionData.project_id
-                        ? { ...p, is_collab_filled: true }
-                        : p
-                ));
-            } else {
-                console.error("Error updating project status:", projectError);
-            }
+        // 3. Sales: transactions where user is seller
+        const { data: sales } = await supabase
+          .from('transactions')
+          .select(`
+            *,
+            project:projects(*),
+            buyer:profiles!buyer_id(*)
+          `)
+          .eq('seller_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (sales) setSalesTransactions(sales as Transaction[]);
+
+        // 4. Pitches received on my collab projects
+        const { data: recPitches } = await supabase
+          .from('collab_requests')
+          .select(`
+            *,
+            project:projects(*),
+            applicant:profiles!applicant_id(*)
+          `)
+          .in('project_id', (projs || []).filter((p) => p.interaction_type === 'collab').map((p) => p.id))
+          .order('created_at', { ascending: false });
+
+        if (recPitches) setReceivedPitches(recPitches as CollabRequest[]);
+
+        // 5. My pitches to other projects
+        const { data: sentPitches } = await supabase
+          .from('collab_requests')
+          .select(`
+            *,
+            project:projects(*)
+          `)
+          .eq('applicant_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (sentPitches) setMyPitches(sentPitches as CollabRequest[]);
+
+        // 6. User profile
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (prof) {
+          setSettingsUsername(prof.username || '');
+          setSettingsBio(prof.bio || '');
+          setSettingsContact(prof.contact_info || '');
         }
-
-        if (error) {
-            showToast("ERROR: " + error.message, "error");
-        } else {
-            // Remove from requests list
-            setRequests(prev => prev.filter(r => r.id !== transactionId));
-            showToast("COLLABORATION_ESTABLISHED: Operative added.", "success");
-        }
+      } catch (err) {
+        console.error('Dashboard data load error:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    const handleReject = async (transactionId: string) => {
-        if (!confirm("Reject this collaboration request?")) return;
+    fetchAllDashboardData();
+  }, [user]);
 
-        const { error } = await supabase
-            .from('transactions')
-            .update({ status: 'failed' })
-            .eq('id', transactionId);
+  // Delete project
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
 
-        if (error) {
-            showToast("ERROR: " + error.message, "error");
-        } else {
-            // Remove from requests list
-            setRequests(prev => prev.filter(r => r.id !== transactionId));
-            showToast("REQUEST_TERMINATED", "info");
-        }
-    };
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectToDelete.id);
 
-    const handleDeleteProject = async (projectId: string) => {
-        if (!confirm("Are you sure you want to PERMANENTLY delete this project? This action cannot be undone.")) return;
-        if (!confirm("Final Warning: Deleting this project will remove it from the marketplace and all associated data.")) return;
+      if (error) throw error;
 
-        setIsLoading(true);
-        try {
-            // Delete from storage (if file_url exists)
-            const { data: project } = await supabase.from('projects').select('file_url').eq('id', projectId).single();
+      toast.success(`"${projectToDelete.title}" deleted.`);
+      setMyProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      setProjectToDelete(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      toast.error(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
-            if (project?.file_url) {
-                await supabase.storage.from('project-files').remove([project.file_url]);
-            }
+  // Toggle Collab Position Filled
+  const handleToggleCollabFilled = async (project: Project) => {
+    const newFilledState = !project.is_collab_filled;
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          is_collab_filled: newFilledState,
+          revived_at: newFilledState ? new Date().toISOString() : null,
+        })
+        .eq('id', project.id);
 
-            // Delete project record
-            const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      if (error) throw error;
 
-            if (error) throw error;
+      toast.success(newFilledState ? 'Position marked as filled.' : 'Position reopened.');
+      setMyProjects((prev) =>
+        prev.map((p) => (p.id === project.id ? { ...p, is_collab_filled: newFilledState } : p))
+      );
+    } catch {
+      toast.error('Failed to update project status.');
+    }
+  };
 
-            showToast("PROJECT_TERMINATED: Deleted from database.", "success");
+  // Accept / Reject Collab Pitch
+  const handleCollabAction = async (requestId: string, action: 'accept' | 'reject') => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-            // Remove from local state
-            setProjects(prev => prev.filter(p => p.id !== projectId));
-        } catch (error: any) {
-            console.error("Error deleting project:", error);
-            showToast("TERMINATION_FAILED: " + error.message, "error");
-        } finally {
-            setIsLoading(false);
-        }
-    };
+      const res = await fetch('/api/collab', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ requestId, action }),
+      });
 
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(action === 'accept' ? 'Pitch accepted! Message channel opened.' : 'Pitch rejected.');
+        setReceivedPitches((prev) =>
+          prev.map((p) => (p.id === requestId ? { ...p, status: action === 'accept' ? 'accepted' : 'rejected' } : p))
+        );
+      } else {
+        toast.error(data.error?.message || 'Action failed.');
+      }
+    } catch {
+      toast.error('Network error updating pitch.');
+    }
+  };
 
+  // Withdraw Collab Application
+  const handleWithdrawPitch = async (requestId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-    const handleSaveSettings = async () => {
-        if (!user) return;
+      const res = await fetch('/api/collab', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ requestId, action: 'withdraw' }),
+      });
 
-        // Validation
-        const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-        const phoneRegex = /^\d{10}$/;
-        const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+      if (res.ok) {
+        toast.success('Pitch withdrawn.');
+        setMyPitches((prev) =>
+          prev.map((p) => (p.id === requestId ? { ...p, status: 'withdrawn' } : p))
+        );
+      }
+    } catch {
+      toast.error('Could not withdraw application.');
+    }
+  };
 
-        if (!usernameRegex.test(username)) {
-            showToast("INVALID_ID: Username must be 3-20 chars (Letters, Numbers, _).", "error");
-            return;
-        }
+  // Retry GitHub Invite
+  const handleRetryInvite = async (transactionId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-        if (upiId && !upiRegex.test(upiId)) {
-            showToast("INVALID_FORMAT: Payment ID format incorrect (user@bank).", "error");
-            return;
-        }
+      const res = await fetch('/api/retry-invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ transactionId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success('Invite dispatched successfully!');
+        setVaultTransactions((prev) =>
+          prev.map((t) => (t.id === transactionId ? { ...t, invite_status: 'sent', invite_error: null } : t))
+        );
+      } else {
+        toast.error(data.error?.message || 'Invite retry failed.');
+      }
+    } catch {
+      toast.error('Network error retrying invite.');
+    }
+  };
 
-        if (phoneNumber && !phoneRegex.test(phoneNumber)) {
-            showToast("Phone Number must be exactly 10 digits.", "error");
-            return;
-        }
+  // Secure Download from Vault
+  const handleVaultDownload = async (projectId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-        setIsSaving(true);
-        try {
-            // Check for username uniqueness if changed
-            // (Skipping for now to keep it simple, but usually good practice)
+      const res = await fetch(`/api/secure-download?projectId=${projectId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.downloadUrl) {
+        window.open(data.downloadUrl, '_blank');
+        toast.success('Download initialized.');
+      } else {
+        toast.error(data.error?.message || 'Download token failed.');
+      }
+    } catch {
+      toast.error('Download error.');
+    }
+  };
 
-            const { data, error } = await supabase
-                .from('profiles')
-                .update({
-                    username: username,
-                    upi_id: upiId,
-                    contact_info: contactInfo,
-                    phone_number: phoneNumber
-                })
-                .eq('id', user.id)
-                .select();
+  // Save Settings
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
 
-            if (error) throw error;
+    setIsSavingSettings(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          username: settingsUsername.trim().toLowerCase(),
+          bio: settingsBio.trim() || null,
+          contact_info: settingsContact.trim() || null,
+        })
+        .eq('id', user.id);
 
-            showToast("Configuration Saved Successfully!", "success");
-        } catch (error: any) {
-            console.error("Error saving settings:", error);
-            showToast(`Failed to save: ${error.message}`, "error");
-        } finally {
-            setIsSaving(false);
-        }
-    };
+      if (error) throw error;
+      toast.success('Profile parameters updated.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      toast.error(msg);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
+  // Compute Overview Metrics
+  const totalEarningsPaise = salesTransactions.reduce((acc, t) => acc + (t.amount || 0), 0);
+  const activeListingsCount = myProjects.filter((p) => !p.is_sold && !p.is_collab_filled && !p.is_archived).length;
+  const totalSalesCount = salesTransactions.length;
+  const totalClaimsCount = vaultTransactions.filter((t) => t.kind === 'adopt').length;
+  const openPitchesCount = receivedPitches.filter((p) => p.status === 'pending').length;
 
-    return (
-        <div className="min-h-screen bg-cyber-black text-foreground selection:bg-cyber-red selection:text-white flex flex-col">
-            <Header />
+  return (
+    <div className="min-h-screen bg-bg text-white flex flex-col pb-20 md:pb-0">
+      <Header />
 
-            <main className="flex-1 container mx-auto px-4 py-8 md:py-12 space-y-8">
+      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 md:py-10 flex flex-col md:flex-row gap-8">
+        {/* DESKTOP LEFT SIDEBAR */}
+        <aside className="hidden md:flex flex-col w-64 shrink-0 gap-6">
+          <div className="p-5 bg-surface rounded-card border border-line space-y-3">
+            <span className="font-mono text-xs uppercase tracking-widest text-[#ff2a2a] block">
+              Operative console
+            </span>
+            <div className="flex items-center gap-3">
+              <Avatar username={user?.username} size={36} />
+              <div className="min-w-0">
+                <span className="font-sans font-semibold text-sm text-white block truncate">
+                  @{user?.username || 'operative'}
+                </span>
+                <span className="font-mono text-xs text-[#39ff14] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#39ff14]" />
+                  Online
+                </span>
+              </div>
+            </div>
+          </div>
 
-                {/* Dashboard Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-cyber-gray/30 pb-8">
-                    <div>
-                        <h1 className="font-display text-4xl md:text-5xl font-bold text-white mb-2 tracking-wider">
-                            <span className="text-cyber-neon mr-4">::</span>
-                            OPERATOR DASHBOARD
-                        </h1>
-                        <p className="text-cyber-muted font-mono text-sm max-w-xl">
-                            Manage your digital assets, track sales, and monitor active collaborations.
-                        </p>
-                    </div>
+          {/* Navigation Links with soft pills */}
+          <nav className="flex flex-col gap-1 p-2 bg-surface rounded-card border border-line">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => switchTab(tab.id)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors text-left font-sans text-sm ${
+                    isActive
+                      ? 'bg-white text-black font-semibold shadow-sm'
+                      : 'text-muted hover:text-white hover:bg-surface-2'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-black' : 'text-muted'}`} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
 
-                    <Link href="/submit">
-                        <CyberButton className="bg-cyber-red text-white font-bold tracking-widest cyber-clip-sm">
-                            <Plus className="w-5 h-5 mr-2" />
-                            NEW UPLOAD
-                        </CyberButton>
-                    </Link>
+          <Link href="/submit" className="w-full">
+            <Button variant="primary" mode="brand" size="md" fullWidth leftIcon={<PlusCircle className="w-4 h-4" />}>
+              List dead project
+            </Button>
+          </Link>
+        </aside>
+
+        {/* MAIN CONSOLE PANE */}
+        <main className="flex-1 min-w-0">
+          {/* TAB 1: OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">Console overview</h1>
+                  <p className="font-sans text-xs text-muted mt-1">Activity metrics across your listed codebases</p>
                 </div>
+                <Link href="/submit">
+                  <Button variant="primary" mode="brand" size="sm" leftIcon={<PlusCircle className="w-4 h-4" />}>
+                    New listing
+                  </Button>
+                </Link>
+              </div>
 
-                {/* Tabs - Mobile Dropdown */}
-                <div className="md:hidden relative mb-6 z-30">
-                    <button
-                        onClick={() => setIsTabMenuOpen(!isTabMenuOpen)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-cyber-black border border-cyber-neon/30 text-cyber-neon font-mono text-sm tracking-widest rounded-md"
-                    >
-                        <div className="flex items-center gap-2">
-                            {(() => {
-                                const active = TABS.find(t => t.id === activeTab) || TABS[0];
-                                const Icon = active.icon;
-                                return (
-                                    <>
-                                        <Icon className="w-4 h-4" />
-                                        <span>{active.label}</span>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                        <ChevronDown className={cn("w-4 h-4 transition-transform", isTabMenuOpen ? "rotate-180" : "")} />
+              {/* StatCards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <StatCard
+                  label="Earnings (Demo)"
+                  value={formatINR(totalEarningsPaise, { showFreeForZero: false })}
+                  subtitle="Razorpay test settlement"
+                  accent="buy"
+                  icon={<DollarSign className="w-4 h-4" />}
+                />
+                <StatCard
+                  label="Active listings"
+                  value={activeListingsCount}
+                  subtitle="Live on marketplace"
+                  accent="neutral"
+                  icon={<Layers className="w-4 h-4" />}
+                />
+                <StatCard
+                  label="Completed sales"
+                  value={totalSalesCount}
+                  subtitle="Exclusive code purchases"
+                  accent="buy"
+                  icon={<CheckCircle className="w-4 h-4 text-[#39ff14]" />}
+                />
+                <StatCard
+                  label="Vault claims"
+                  value={totalClaimsCount}
+                  subtitle="Free forks & acquisitions"
+                  accent="adopt"
+                  icon={<Shield className="w-4 h-4 text-[#fbbf24]" />}
+                />
+                <StatCard
+                  label="Open pitches"
+                  value={openPitchesCount}
+                  subtitle="Incoming partner proposals"
+                  accent="collab"
+                  icon={<Users className="w-4 h-4 text-[#60a5fa]" />}
+                />
+                <StatCard
+                  label="Security status"
+                  value="Active"
+                  subtitle="RLS & token encryption"
+                  accent="neutral"
+                />
+              </div>
+
+              {/* Quick Actions & Recent Activity */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                {/* Recent Sales / Transactions */}
+                <div className="p-5 bg-surface rounded-card border border-line space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-line">
+                    <span className="font-sans text-sm font-semibold text-white">Recent settlements</span>
+                    <button onClick={() => switchTab('sales')} className="text-xs font-mono text-[#39ff14] hover:underline">
+                      View all
                     </button>
+                  </div>
 
-                    {isTabMenuOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-cyber-black border border-cyber-gray/30 rounded-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                            {TABS.map((tab) => {
-                                const Icon = tab.icon;
-                                const isActive = activeTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => {
-                                            handleTabChange(tab.id); // Update URL and Tab
-                                            setProjects([]); // Clear for safety
-                                            setIsLoading(true);
-                                            setIsTabMenuOpen(false); // Close menu
-                                        }}
-                                        className={cn(
-                                            "w-full flex items-center gap-3 px-4 py-3 font-mono text-sm tracking-widest transition-all text-left border-b border-cyber-gray/10 last:border-0",
-                                            isActive
-                                                ? "bg-cyber-neon/10 text-cyber-neon"
-                                                : "text-cyber-gray hover:text-white hover:bg-cyber-gray/10"
-                                        )}
-                                    >
-                                        <Icon className="w-4 h-4" />
-                                        <span>{tab.label.replace('COLLABORATIONS', 'COLLABS')}</span>
-                                    </button>
-                                );
-                            })}
+                  {salesTransactions.length === 0 ? (
+                    <p className="text-xs text-muted py-6 text-center">No sales completed yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {salesTransactions.slice(0, 4).map((tx) => (
+                        <div key={tx.id} className="p-3 bg-surface-2 rounded-xl flex items-center justify-between text-xs font-mono">
+                          <div className="truncate max-w-[180px]">
+                            <span className="text-white block truncate">{tx.project?.title}</span>
+                            <span className="text-muted text-[11px]">Buyer: @{tx.buyer?.username || 'user'}</span>
+                          </div>
+                          <span className="text-[#39ff14] font-medium">{formatINR(tx.amount, { showFreeForZero: false })}</span>
                         </div>
-                    )}
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Tabs - Height Desktop Only */}
-                <div className="hidden md:flex md:flex-row gap-2 pb-2 w-full">
-                    {TABS.map((tab) => {
-                        const Icon = tab.icon;
-                        const isActive = activeTab === tab.id;
+                {/* Pending Collaboration Pitches */}
+                <div className="p-5 bg-surface rounded-card border border-line space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-line">
+                    <span className="font-sans text-sm font-semibold text-white">Incoming pitches</span>
+                    <button onClick={() => switchTab('collabs')} className="text-xs font-mono text-[#60a5fa] hover:underline">
+                      View all
+                    </button>
+                  </div>
+
+                  {receivedPitches.filter((p) => p.status === 'pending').length === 0 ? (
+                    <p className="text-xs text-muted py-6 text-center">No pending collaboration pitches.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {receivedPitches
+                        .filter((p) => p.status === 'pending')
+                        .slice(0, 3)
+                        .map((p) => (
+                          <div key={p.id} className="p-3 bg-surface-2 rounded-xl space-y-2 text-xs font-mono">
+                            <div className="flex justify-between items-center">
+                              <span className="text-white font-medium truncate max-w-[150px]">
+                                @{p.applicant?.username || 'operative'}
+                              </span>
+                              <span className="text-[11px] text-muted">on {p.project?.title}</span>
+                            </div>
+                            <p className="font-sans text-xs text-fg/80 line-clamp-1">{p.pitch}</p>
+                            <div className="flex gap-3 pt-1">
+                              <button
+                                onClick={() => handleCollabAction(p.id, 'accept')}
+                                className="text-xs font-mono text-[#39ff14] hover:underline"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleCollabAction(p.id, 'reject')}
+                                className="text-xs font-mono text-[#ff2a2a] hover:underline"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: MY LISTINGS */}
+          {activeTab === 'listings' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">My listings</h1>
+                  <p className="font-sans text-xs text-muted mt-1">Manage, update, and monitor your published codebases</p>
+                </div>
+                <Link href="/submit">
+                  <Button variant="primary" mode="brand" size="sm" leftIcon={<PlusCircle className="w-4 h-4" />}>
+                    List project
+                  </Button>
+                </Link>
+              </div>
+
+              {myProjects.length === 0 ? (
+                <EmptyState
+                  title="No codebases listed"
+                  description="You have not released any repositories to The Graveyard yet. Monetize dead projects or seek a collaborator today."
+                  actionLabel="Publish first project"
+                  onAction={() => router.push('/submit')}
+                />
+              ) : (
+                <div className="border border-line bg-surface rounded-card overflow-hidden">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
+                      <tr>
+                        <th className="py-3.5 px-4 font-normal">Codebase</th>
+                        <th className="py-3.5 px-4 font-normal">Mode</th>
+                        <th className="py-3.5 px-4 font-normal">Status</th>
+                        <th className="py-3.5 px-4 font-normal">Views</th>
+                        <th className="py-3.5 px-4 font-normal">Created</th>
+                        <th className="py-3.5 px-4 font-normal text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {myProjects.map((p) => {
+                        let statusElement: React.ReactNode = <StatusBadge status="live" label="Live" />;
+                        if (p.interaction_type === 'buy') {
+                          statusElement = p.is_sold ? (
+                            <StatusBadge status="sold" label="Sold" />
+                          ) : (
+                            <StatusBadge status="live" label="For sale" />
+                          );
+                        } else if (p.interaction_type === 'adopt') {
+                          statusElement = <StatusBadge status="claimed" label="Live" />;
+                        } else if (p.interaction_type === 'collab') {
+                          statusElement = p.is_collab_filled ? (
+                            <StatusBadge status="filled" label="Filled" />
+                          ) : (
+                            <StatusBadge status="live" label="Open" />
+                          );
+                        }
+
                         return (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    handleTabChange(tab.id);
-                                    setProjects([]);
-                                    setIsLoading(true);
-                                }}
-                                className={cn(
-                                    "flex flex-col md:flex-row items-center justify-center gap-2 md:gap-3 px-2 md:px-6 py-3 font-mono text-[10px] md:text-sm tracking-widest transition-all border rounded-md md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2",
-                                    isActive
-                                        ? "border-cyber-neon text-cyber-neon bg-cyber-neon/10 md:bg-cyber-neon/5"
-                                        : "border-cyber-gray/30 md:border-transparent text-cyber-muted hover:text-white hover:bg-cyber-gray/10"
+                          <tr key={p.id} className="hover:bg-surface-2/40 transition-colors">
+                            <td className="py-3 px-4 flex items-center gap-3">
+                              <div className="w-12 h-8 rounded-lg overflow-hidden bg-surface-2 shrink-0 border border-line">
+                                {p.cover_url ? (
+                                  <img src={p.cover_url} alt={p.title} className="w-full h-full object-cover" />
+                                ) : (
+                                  <CoverArt title={p.title} mode={p.interaction_type} className="w-full h-full" />
                                 )}
-                            >
-                                <Icon className="w-5 h-5 md:w-4 md:h-4 mb-1 md:mb-0" />
-                                <span className="text-center">{tab.label.replace('COLLABORATIONS', 'COLLABS')}</span>
-                            </button>
+                              </div>
+                              <div className="truncate max-w-[180px] sm:max-w-[220px]">
+                                <Link href={`/project/${p.id}`} className="font-sans font-medium text-sm text-white hover:underline block truncate">
+                                  {p.title}
+                                </Link>
+                                <span className="text-[11px] text-muted">
+                                  {p.interaction_type === 'buy'
+                                    ? formatINR(p.price_paise, { showFreeForZero: false })
+                                    : p.interaction_type === 'adopt'
+                                    ? 'Free'
+                                    : p.collab_terms || 'Collab'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <ModeBadge mode={p.interaction_type} />
+                            </td>
+                            <td className="py-3 px-4">{statusElement}</td>
+                            <td className="py-3 px-4 text-muted">
+                              <span>{p.views || 0}</span>
+                            </td>
+                            <td className="py-3 px-4 text-muted">
+                              {new Date(p.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Link href={`/project/${p.id}`}>
+                                  <button className="p-1.5 hover:text-white text-muted" title="View details">
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                </Link>
+                                <Link href={`/edit/${p.id}`}>
+                                  <button className="p-1.5 hover:text-[#39ff14] text-muted" title="Edit codebase">
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                </Link>
+                                {p.interaction_type === 'collab' && (
+                                  <button
+                                    onClick={() => handleToggleCollabFilled(p)}
+                                    className="p-1.5 hover:text-[#60a5fa] text-muted"
+                                    title={p.is_collab_filled ? 'Reopen position' : 'Mark filled'}
+                                  >
+                                    <Users className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setProjectToDelete(p)}
+                                  className="p-1.5 hover:text-[#ff2a2a] text-muted"
+                                  title="Delete listing"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
                         );
-                    })}
+                      })}
+                    </tbody>
+                  </table>
                 </div>
+              )}
+            </div>
+          )}
 
-                {/* Content Grid */}
-                <div className="min-h-[400px]">
-                    <motion.div
-                        key={activeTab}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className={activeTab === 'settings' ? "max-w-2xl mx-auto" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"}
-                    >
-                        {activeTab === 'settings' ? (
-                            <div className="bg-cyber-dark/50 border border-cyber-gray/30 p-4 md:p-8 cyber-clip rounded-lg relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-4 opacity-20">
-                                    <Settings className="w-16 h-16 md:w-24 md:h-24 text-cyber-neon spin-slow" />
-                                </div>
+          {/* TAB 3: VAULT */}
+          {activeTab === 'vault' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div>
+                <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">Digital vault</h1>
+                <p className="font-sans text-xs text-muted mt-1">
+                  All acquired repositories, download archives, and GitHub collaborator permissions
+                </p>
+              </div>
 
-                                <h2 className="text-xl md:text-2xl font-display text-white mb-6 flex items-center gap-3">
-                                    <IndianRupee className="w-6 h-6 text-cyber-neon" />
-                                    PAYOUT_CONFIGURATION
-                                </h2>
+              {vaultTransactions.length === 0 ? (
+                <EmptyState
+                  title="Vault is empty"
+                  description="You have not purchased or claimed any codebases yet. Browse the graveyard to scavenge working software."
+                  actionLabel="Explore projects"
+                  onAction={() => router.push('/')}
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {vaultTransactions.map((tx) => (
+                    <div key={tx.id} className="p-6 bg-surface rounded-card border border-line space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="font-mono text-[10px] text-[#39ff14] px-2 py-0.5 bg-[#39ff14]/10 rounded-full uppercase">
+                              {tx.kind === 'buy' ? 'Purchased' : 'Claimed'}
+                            </span>
+                            <span className="font-mono text-xs text-muted">
+                              {new Date(tx.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <Link href={`/project/${tx.project_id}`} className="font-display font-semibold text-lg text-white hover:underline block truncate max-w-[240px]">
+                            {tx.project?.title || 'Codebase'}
+                          </Link>
+                        </div>
+                        <span className="font-mono text-sm font-semibold text-white">
+                          {tx.kind === 'buy' ? formatINR(tx.amount, { showFreeForZero: false }) : 'Free claim'}
+                        </span>
+                      </div>
 
-                                <div className="space-y-6 relative z-10">
-                                    <div>
-                                        {/* USER IDENTITY */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                            <div>
-                                                <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                                    Operative Codename (Username)
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={username}
-                                                    onChange={(e) => setUsername(e.target.value)}
-                                                    className="w-full bg-cyber-black border border-cyber-gray text-white px-4 py-3 focus:border-cyber-neon focus:outline-none font-mono transition-colors"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                                    Secure Comms (Phone)
-                                                </label>
-                                                <input
-                                                    type="tel"
-                                                    value={phoneNumber}
-                                                    onChange={(e) => setPhoneNumber(e.target.value)}
-                                                    placeholder="10-digit number"
-                                                    maxLength={10}
-                                                    className="w-full bg-cyber-black border border-cyber-gray text-white px-4 py-3 focus:border-cyber-neon focus:outline-none font-mono transition-colors"
-                                                />
-                                            </div>
-                                        </div>
+                      {/* Delivery Status & Actions */}
+                      <div className="p-3.5 bg-surface-2 rounded-xl space-y-2 text-xs font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted">GitHub invite:</span>
+                          <span className="flex items-center gap-1 font-medium">
+                            {tx.invite_status === 'sent' && (
+                              <span className="text-[#39ff14] flex items-center gap-1">
+                                <CheckCircle className="w-3.5 h-3.5" /> Sent
+                              </span>
+                            )}
+                            {tx.invite_status === 'failed' && (
+                              <span className="text-[#ff2a2a] flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                              </span>
+                            )}
+                            {tx.invite_status === 'pending' && <span className="text-[#fbbf24]">Pending</span>}
+                            {tx.invite_status === 'not_applicable' && <span className="text-muted">N/A</span>}
+                          </span>
+                        </div>
 
-                                        {/* PAYMENT INFO */}
-                                        <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                            Registered UPI ID (For Payouts)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={upiId}
-                                            onChange={(e) => setUpiId(e.target.value)}
-                                            placeholder="username@bank"
-                                            className="w-full bg-cyber-black border border-cyber-gray text-white px-4 py-3 focus:border-cyber-neon focus:outline-none font-mono transition-colors mb-2"
-                                        />
-                                        <p className="text-[10px] text-cyber-gray mb-6">
-                                            * Funds from sales will be transferred to this ID.
-                                        </p>
-
-                                        <label className="block text-cyber-muted font-mono text-xs uppercase tracking-widest mb-2">
-                                            Secure Contact Channel (For Collaborators)
-                                        </label>
-                                        <div className="flex flex-col md:flex-row gap-4">
-                                            <input
-                                                type="text"
-                                                value={contactInfo}
-                                                onChange={(e) => setContactInfo(e.target.value)}
-                                                placeholder="SIGNAL / DISCORD / EMAIL"
-                                                className="flex-1 bg-cyber-black border border-cyber-gray text-white px-4 py-3 focus:border-cyber-neon focus:outline-none font-mono transition-colors"
-                                            />
-                                            <CyberButton
-                                                onClick={handleSaveSettings}
-                                                disabled={isSaving}
-                                                className="bg-cyber-neon text-cyber-black font-bold whitespace-nowrap w-full md:w-auto justify-center"
-                                            >
-                                                {isSaving ? "SAVING..." : "SAVE_CONFIG"}
-                                            </CyberButton>
-                                        </div>
-                                        <p className="text-[10px] text-cyber-gray mt-2">
-                                            * This information is ONLY visible to accepted collaborators.
-                                        </p>
-                                    </div>
-
-                                    <div className="pt-6 border-t border-cyber-gray/20">
-                                        <div className="flex items-center justify-between text-sm font-mono text-cyber-muted mb-2">
-                                            <span>ACCOUNT_STATUS</span>
-                                            <span className="text-cyber-neon">ACTIVE</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm font-mono text-cyber-muted">
-                                            <span>PLATFORM_FEE</span>
-                                            <span>5%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : activeTab === 'messages' ? (
-                            <div className="col-span-full">
-                                <ChatInterface />
-                            </div>
-                        ) : activeTab === 'sold' ? (
-                            <div className="col-span-full space-y-4">
-                                {/* Desktop Table View */}
-                                <div className="hidden md:block bg-cyber-dark/50 border border-cyber-gray/30 cyber-clip rounded-lg overflow-hidden">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse">
-                                            <thead>
-                                                <tr className="border-b border-cyber-gray/30 bg-cyber-black/50">
-                                                    <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Date</th>
-                                                    <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Project</th>
-                                                    <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Buyer</th>
-                                                    <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider text-right">Price</th>
-                                                    <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider text-center">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-cyber-gray/10">
-                                                {isLoading ? (
-                                                    <tr><td colSpan={5} className="p-8 text-center text-cyber-neon font-mono animate-pulse">LOADING_DATA...</td></tr>
-                                                ) : projects.length > 0 ? (
-                                                    (projects as Transaction[]).map((item) => (
-                                                        <tr key={item.id} className="hover:bg-cyber-gray/5 transition-colors group">
-                                                            <td className="p-4 font-mono text-sm text-cyber-gray">
-                                                                {new Date(item.created_at).toLocaleDateString()}
-                                                            </td>
-                                                            <td className="p-4 font-display font-bold text-white group-hover:text-cyber-neon transition-colors">
-                                                                {item.project?.title || "UNKNOWN_PROJECT"}
-                                                            </td>
-                                                            <td className="p-4 font-mono text-sm text-white">
-                                                                <div className="flex flex-col">
-                                                                    <span>{item.buyer?.username || "UNKNOWN_USER"}</span>
-                                                                    {item.github_username && (
-                                                                        <span className="text-[10px] text-cyber-muted flex items-center gap-1 mt-0.5">
-                                                                            <Github className="w-3 h-3" />
-                                                                            {item.github_username}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 font-mono text-sm text-right text-cyber-neon">
-                                                                ₹{item.amount}
-                                                            </td>
-                                                            <td className="p-4 text-center">
-                                                                <span className="px-2 py-1 text-[10px] font-bold font-mono bg-cyber-neon/10 text-cyber-neon border border-cyber-neon/30 rounded-sm uppercase">
-                                                                    COMPLETED
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ))
-                                                ) : (
-                                                    <tr>
-                                                        <td colSpan={5} className="p-8 text-center text-cyber-muted font-mono">
-                                                            NO_SALES_RECORDED
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                {/* Mobile Card View */}
-                                <div className="md:hidden space-y-4">
-                                    {isLoading ? (
-                                        <div className="p-8 text-center text-cyber-neon font-mono animate-pulse border border-dashed border-cyber-gray/30 rounded-lg">
-                                            LOADING_DATA...
-                                        </div>
-                                    ) : projects.length > 0 ? (
-                                        projects.map((item: any) => (
-                                            <div key={item.id} className="bg-cyber-dark/50 border border-cyber-gray/30 rounded-lg p-4 space-y-3">
-                                                <div className="flex justify-between items-start">
-                                                    <div>
-                                                        <h4 className="font-display font-bold text-white text-lg leading-tight">
-                                                            {item.project?.title || "UNKNOWN_PROJECT"}
-                                                        </h4>
-                                                        <div className="text-xs font-mono text-cyber-muted mt-1">
-                                                            {new Date(item.created_at).toLocaleDateString()}
-                                                        </div>
-                                                    </div>
-                                                    <span className="px-2 py-1 text-[10px] font-bold font-mono bg-cyber-neon/10 text-cyber-neon border border-cyber-neon/30 rounded-sm uppercase">
-                                                        SOLD
-                                                    </span>
-                                                </div>
-
-                                                <div className="flex justify-between items-end border-t border-cyber-gray/10 pt-3">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] text-cyber-muted uppercase tracking-wider">Buyer</span>
-                                                        <span className="font-mono text-sm text-white">{item.buyer?.username || "UNKNOWN"}</span>
-                                                        {item.github_username && (
-                                                            <span className="text-[10px] text-cyber-muted flex items-center gap-1 mt-0.5">
-                                                                <Github className="w-3 h-3" />
-                                                                {item.github_username}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-xl font-mono font-bold text-cyber-neon">
-                                                        ₹{item.amount}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-8 text-center text-cyber-muted font-mono border border-dashed border-cyber-gray/30 rounded-lg">
-                                            NO_SALES_RECORDED
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ) : isLoading ? (
-                            <div className="col-span-full py-20 text-center text-cyber-neon animate-pulse font-mono">
-                                LOADING_DATA_STREAM...
-                            </div>
-                        ) : (
-                            <>
-                                {/* Pending Requests Section */}
-                                {activeTab === 'collab' && requests.length > 0 && (
-                                    <div className="col-span-full mb-8">
-                                        <h3 className="text-xl font-display text-cyber-neon mb-4 flex items-center gap-2">
-                                            <Users className="w-5 h-5" />
-                                            PENDING_REQUESTS
-                                        </h3>
-                                        <div className="bg-cyber-dark/50 border border-cyber-gray/30 cyber-clip rounded-lg overflow-hidden">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead className="bg-cyber-black/50 border-b border-cyber-gray/30">
-                                                    <tr>
-                                                        <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Requester</th>
-                                                        <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Project</th>
-                                                        <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider">Application</th>
-                                                        <th className="p-4 font-mono text-xs text-cyber-muted uppercase tracking-wider text-right">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-cyber-gray/10">
-                                                    {requests.map((request) => (
-                                                        <tr key={request.id} className="hover:bg-cyber-gray/5">
-                                                            <td className="p-4 font-mono text-sm text-white">
-                                                                {request.buyer?.username}
-                                                            </td>
-                                                            <td className="p-4 font-display font-bold text-white">
-                                                                {request.project?.title}
-                                                            </td>
-                                                            <td className="p-4 font-mono text-sm text-cyber-gray">
-                                                                {request.metadata ? (
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <span className="text-white text-xs block" title="Contact Info">
-                                                                            {request.metadata.contact}
-                                                                        </span>
-                                                                        <span className="text-[10px] text-cyber-muted truncate max-w-[200px] block" title={request.metadata.specialization}>
-                                                                            {request.metadata.specialization}
-                                                                        </span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-cyber-muted text-xs italic">Legacy Request</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="p-4 text-right">
-                                                                <div className="flex items-center justify-end gap-2">
-                                                                    <button
-                                                                        onClick={() => handleAccept(request.id)}
-                                                                        className="p-2 hover:bg-green-500/20 text-green-500 border border-transparent hover:border-green-500/50 rounded transition-all"
-                                                                        title="Accept"
-                                                                    >
-                                                                        <Check className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleReject(request.id)}
-                                                                        className="p-2 hover:bg-red-500/20 text-red-500 border border-transparent hover:border-red-500/50 rounded transition-all"
-                                                                        title="Reject"
-                                                                    >
-                                                                        <X className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Active Partners Table Removed - Merged into Main Grid */}
-
-                                {/* Card Grid for Projects (Collaborations I'm in OR My Uploads OR Purchased) */}
-                                {projects.length > 0 && (
-                                    (projects as Project[]).map((project) => (
-                                        <motion.div
-                                            key={project.id}
-                                            layout
-                                            initial={{ opacity: 0, scale: 0.9 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            transition={{ duration: 0.2 }}
-                                        >
-                                            <CyberCard
-                                                project={project}
-                                                isOwner={activeTab === 'uploads' || activeTab === 'sold'}
-                                                isPurchased={activeTab === 'purchased'}
-                                                isCollaborator={activeTab === 'collab'}
-                                                onDelete={activeTab === 'uploads' ? handleDeleteProject : undefined}
-                                            />
-                                        </motion.div>
-                                    ))
-                                )}
-                                {/* Show "No Data" only if NO requests AND NO active partners AND NO projects */}
-                                {(activeTab !== 'collab' || (requests.length === 0 && activePartners.length === 0)) && projects.length === 0 && (
-                                    <div className="col-span-full py-20 text-center border border-dashed border-cyber-gray/30 rounded-lg bg-cyber-dark/20">
-                                        <p className="font-display tracking-widest text-cyber-muted text-xl">NO_DATA_FOUND</p>
-                                        <p className="font-mono text-sm text-cyber-gray mt-2">This sector is empty.</p>
-                                    </div>
-                                )}
-                            </>
+                        {tx.invite_status === 'failed' && (
+                          <div className="pt-2 border-t border-line flex items-center justify-between">
+                            <span className="text-[11px] text-[#ff2a2a] truncate max-w-[200px]">
+                              {tx.invite_error || 'Permission error'}
+                            </span>
+                            <button
+                              onClick={() => handleRetryInvite(tx.id)}
+                              className="text-[11px] font-mono text-[#39ff14] hover:underline flex items-center gap-1"
+                            >
+                              <RefreshCw className="w-3 h-3" /> Retry
+                            </button>
+                          </div>
                         )}
-                    </motion.div>
+                      </div>
+
+                      {/* Download & Access CTAs */}
+                      <div className="flex items-center gap-3 pt-1">
+                        <Button
+                          variant="primary"
+                          mode="buy"
+                          size="sm"
+                          fullWidth
+                          onClick={() => handleVaultDownload(tx.project_id)}
+                          leftIcon={<Download className="w-3.5 h-3.5" />}
+                        >
+                          Download ZIP
+                        </Button>
+                        <Link href={`/project/${tx.project_id}`} className="shrink-0">
+                          <Button variant="ghost" size="sm">
+                            Inspect
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: SALES */}
+          {activeTab === 'sales' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div>
+                <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">Sales & settlements</h1>
+                <p className="font-sans text-xs text-muted mt-1">Transactions executed for your listed codebases</p>
+              </div>
+
+              {salesTransactions.length === 0 ? (
+                <EmptyState
+                  title="No sales logged"
+                  description="When an operative acquires one of your projects, the verified order and payment telemetry will be logged here."
+                />
+              ) : (
+                <div className="border border-line bg-surface rounded-card overflow-hidden">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
+                      <tr>
+                        <th className="py-3.5 px-4 font-normal">Project</th>
+                        <th className="py-3.5 px-4 font-normal">Buyer</th>
+                        <th className="py-3.5 px-4 font-normal">Amount</th>
+                        <th className="py-3.5 px-4 font-normal">Date</th>
+                        <th className="py-3.5 px-4 font-normal">Status</th>
+                        <th className="py-3.5 px-4 font-normal">GitHub Invite</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {salesTransactions.map((tx) => (
+                        <tr key={tx.id} className="hover:bg-surface-2/40">
+                          <td className="py-3.5 px-4 font-medium text-white">
+                            <Link href={`/project/${tx.project_id}`} className="hover:underline">
+                              {tx.project?.title}
+                            </Link>
+                          </td>
+                          <td className="py-3.5 px-4 text-white">@{tx.buyer?.username || 'operative'}</td>
+                          <td className="py-3.5 px-4 text-[#39ff14] font-medium">
+                            {formatINR(tx.amount, { showFreeForZero: false })}
+                          </td>
+                          <td className="py-3.5 px-4 text-muted">
+                            {new Date(tx.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <StatusBadge status="live" label="Completed" />
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {tx.invite_status === 'sent' && (
+                              <span className="text-[#39ff14] flex items-center gap-1">
+                                <CheckCircle className="w-3.5 h-3.5" /> Sent
+                              </span>
+                            )}
+                            {tx.invite_status === 'failed' && (
+                              <span className="text-[#ff2a2a] flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                              </span>
+                            )}
+                            {tx.invite_status === 'not_applicable' && <span className="text-muted">N/A</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: COLLABS */}
+          {activeTab === 'collabs' && (
+            <div className="space-y-8 animate-in fade-in duration-200">
+              {/* Section 1: Received Pitches */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <div>
+                    <h2 className="font-display text-xl font-semibold text-white">Received pitches</h2>
+                    <p className="font-sans text-xs text-muted mt-0.5">Operatives applying to co-build your listed projects</p>
+                  </div>
+                  <span className="font-mono text-xs text-[#60a5fa]">{receivedPitches.length} total</span>
                 </div>
 
-            </main>
+                {receivedPitches.length === 0 ? (
+                  <p className="text-xs text-muted py-8 text-center bg-surface rounded-card border border-line">
+                    No partner pitches received yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {receivedPitches.map((p) => (
+                      <div key={p.id} className="p-5 bg-surface rounded-card border border-line space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar src={p.applicant?.avatar_url} username={p.applicant?.username} size={36} />
+                            <div>
+                              <span className="font-sans font-semibold text-sm text-white block">
+                                @{p.applicant?.username}
+                              </span>
+                              <span className="font-mono text-xs text-muted">
+                                Applied for: <strong className="text-white">{p.project?.title}</strong>
+                              </span>
+                            </div>
+                          </div>
 
-            <Footer />
-        </div>
-    );
+                          <div className="flex items-center gap-2">
+                            {p.status === 'pending' && <StatusBadge status="pending" label="Pending" />}
+                            {p.status === 'accepted' && <StatusBadge status="live" label="Accepted" />}
+                            {p.status === 'rejected' && <StatusBadge status="failed" label="Rejected" />}
+                            {p.status === 'withdrawn' && <StatusBadge status="archived" label="Withdrawn" />}
+                          </div>
+                        </div>
+
+                        {/* Pitch Box */}
+                        <div className="p-3.5 bg-surface-2 rounded-xl font-sans text-xs sm:text-sm text-fg/90 whitespace-pre-wrap leading-relaxed">
+                          {p.pitch}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-muted">
+                          <div>
+                            <span>Contact: </span>
+                            <span className="text-white">{p.contact}</span>
+                            {p.portfolio_url && (
+                              <a
+                                href={p.portfolio_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#60a5fa] hover:underline ml-3 inline-flex items-center gap-1"
+                              >
+                                <span>Portfolio</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+
+                          {p.status === 'pending' && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleCollabAction(p.id, 'reject')}
+                              >
+                                Reject
+                              </Button>
+                              <Button
+                                variant="primary"
+                                mode="collab"
+                                size="sm"
+                                onClick={() => handleCollabAction(p.id, 'accept')}
+                              >
+                                Accept & open thread
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: My Applications */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <div>
+                    <h2 className="font-display text-xl font-semibold text-white">My applications</h2>
+                    <p className="font-sans text-xs text-muted mt-0.5">Pitches you submitted to other owners</p>
+                  </div>
+                  <span className="font-mono text-xs text-muted">{myPitches.length} total</span>
+                </div>
+
+                {myPitches.length === 0 ? (
+                  <p className="text-xs text-muted py-8 text-center bg-surface rounded-card border border-line">
+                    You have not submitted any collaboration proposals.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {myPitches.map((p) => (
+                      <div key={p.id} className="p-5 bg-surface rounded-card border border-line space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Link href={`/project/${p.project_id}`} className="font-sans font-semibold text-sm text-white hover:underline">
+                            {p.project?.title}
+                          </Link>
+                          <div className="flex items-center gap-2">
+                            {p.status === 'pending' && <StatusBadge status="pending" label="Pending" />}
+                            {p.status === 'accepted' && <StatusBadge status="live" label="Accepted" />}
+                            {p.status === 'rejected' && <StatusBadge status="failed" label="Rejected" />}
+                            {p.status === 'withdrawn' && <StatusBadge status="archived" label="Withdrawn" />}
+                          </div>
+                        </div>
+                        <p className="font-sans text-xs text-muted line-clamp-2">{p.pitch}</p>
+                        {p.status === 'pending' && (
+                          <div className="pt-2 text-right">
+                            <button
+                              onClick={() => handleWithdrawPitch(p.id)}
+                              className="text-xs font-mono text-[#ff2a2a] hover:underline"
+                            >
+                              Withdraw application
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: MESSAGES */}
+          {activeTab === 'messages' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div>
+                <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">Messages</h1>
+                <p className="font-sans text-xs text-muted mt-1">Peer-to-peer collaborator transmissions</p>
+              </div>
+              <ChatInterface initialRecipientId={recipientParam} />
+            </div>
+          )}
+
+          {/* TAB 7: SETTINGS */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 max-w-xl animate-in fade-in duration-200">
+              <div>
+                <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">Settings</h1>
+                <p className="font-sans text-xs text-muted mt-1">Public profile and developer identification</p>
+              </div>
+
+              <form onSubmit={handleSaveSettings} className="p-6 bg-surface rounded-card border border-line space-y-5">
+                <div className="space-y-2">
+                  <label className="font-sans text-sm font-medium text-white block">Developer handle</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted">@</span>
+                    <Input
+                      value={settingsUsername}
+                      onChange={(e) => setSettingsUsername(e.target.value)}
+                      className="pl-8"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="font-sans text-sm font-medium text-white block">Bio / Specialization</label>
+                  <Textarea
+                    rows={3}
+                    value={settingsBio}
+                    onChange={(e) => setSettingsBio(e.target.value)}
+                    placeholder="Describe your engineering focus..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="font-sans text-sm font-medium text-white block">Public contact handle (Discord/Telegram)</label>
+                  <Input
+                    value={settingsContact}
+                    onChange={(e) => setSettingsContact(e.target.value)}
+                    placeholder="@operative_dev"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <Button variant="primary" mode="brand" size="md" type="submit" isLoading={isSavingSettings}>
+                    Save parameters
+                  </Button>
+                </div>
+              </form>
+
+              {/* Danger Zone */}
+              <div className="p-6 bg-surface-2/60 rounded-card border border-[#ff2a2a]/30 space-y-3">
+                <span className="font-mono text-xs uppercase text-[#ff2a2a] font-semibold block">Danger zone</span>
+                <p className="font-sans text-xs text-muted">
+                  Session termination or local test credential clearing.
+                </p>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    toast.success('Local test caches cleared.');
+                  }}
+                >
+                  Clear local test state
+                </Button>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* MOBILE BOTTOM TAB BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-header bg-bg/95 border-t border-line px-2 py-2 flex items-center justify-around">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => switchTab(tab.id)}
+              className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
+                isActive ? 'text-white' : 'text-muted'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="font-mono text-[9px] uppercase tracking-normal">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* DELETE CONFIRMATION DIALOG */}
+      {projectToDelete && (
+        <ConfirmDialog
+          isOpen={Boolean(projectToDelete)}
+          title={`Delete "${projectToDelete.title}"?`}
+          description="This action will permanently remove the project from the marketplace index. This operation cannot be reversed."
+          requireMatchText={projectToDelete.title}
+          confirmText="Delete codebase"
+          isDanger={true}
+          isLoading={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onClose={() => setProjectToDelete(null)}
+        />
+      )}
+
+      <Footer />
+    </div>
+  );
 }
 
 export default function DashboardPage() {
-    return (
-        <Suspense fallback={
-            <div className="flex items-center justify-center min-h-screen bg-cyber-black text-cyber-neon font-mono animate-pulse">
-                INITIALIZING_DASHBOARD_PROTOCOL...
-            </div>
-        }>
-            <DashboardContent />
-        </Suspense>
-    );
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-bg" />}>
+      <DashboardContent />
+    </Suspense>
+  );
 }

@@ -1,196 +1,620 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import FilterBar from "@/components/FilterBar";
-import CyberCard from "@/components/CyberCard";
-import { mockProjects } from "@/data/mockProjects";
-import { InteractionType, Project } from "@/types/project";
-import Link from "next/link";
-import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import {
+  Skull,
+  ArrowDown,
+  ArrowRight,
+  Flame,
+  Sparkles,
+} from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import FilterBar, { SortOption } from '@/components/FilterBar';
+import ProjectCard from '@/components/ProjectCard';
+import FeaturedResurrections from '@/components/FeaturedResurrections';
+import HowItWorksStack from '@/components/HowItWorksStack';
+import { ProjectCardSkeleton } from '@/components/ui/Skeleton';
+import EmptyState from '@/components/ui/EmptyState';
+import Button from '@/components/ui/Button';
+import PaymentModal from '@/components/PaymentModal';
+import CollabRequestModal from '@/components/CollabRequestModal';
+import SplitText from '@/components/motion/SplitText';
+import Reveal from '@/components/motion/Reveal';
+import Magnetic from '@/components/motion/Magnetic';
+import { motion } from 'framer-motion';
+import { useIntroDone } from '@/hooks/useIntroDone';
+import { Project, InteractionType, MarketplaceStats } from '@/types/project';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { extractFeaturedFromList } from '@/lib/featured';
+import { toast } from 'sonner';
 
-const Home = () => {
-    const [searchQuery, setSearchQuery] = useState("");
-    const [activeFilter, setActiveFilter] = useState<InteractionType | 'all'>('all');
+// Dynamically import heavy interactive motion components on client only
+const SoulsCanvas = dynamic(() => import('@/components/hero/SoulsCanvas'), { ssr: false });
+const CustomCursor = dynamic(() => import('@/components/motion/CustomCursor'), { ssr: false });
+const TechMarquee = dynamic(() => import('@/components/TechMarquee'), { ssr: false });
+const ResurrectedWall = dynamic(() => import('@/components/ResurrectedWall'), { ssr: false });
 
-    const { user } = useAuth();
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const introDone = useIntroDone();
 
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+  // Search & Filter State (synced to URL)
+  const initialMode = (searchParams.get('mode') as InteractionType) || 'all';
+  const initialSearch = searchParams.get('search') || '';
+  const initialSort = (searchParams.get('sort') as SortOption) || 'newest';
+  const initialTechs = searchParams.get('tech')
+    ? searchParams.get('tech')!.split(',').filter(Boolean)
+    : [];
+  const initialIncludeResurrected = searchParams.get('resurrected') === 'true';
 
-    // Fetch Projects from Supabase
-    useEffect(() => {
-        const fetchProjects = async () => {
-            setIsLoading(true);
-            try {
-                // Fetch projects sorted by newest first
-                const { data, error } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .eq('is_sold', false)
-                    .eq('is_archived', false)
-                    // .eq('is_collab_filled', false) // Optionally filter at DB level, but client side is fine for small scale
-                    .order('created_at', { ascending: false });
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [activeMode, setActiveMode] = useState<InteractionType | 'all'>(initialMode);
+  const [selectedTechs, setSelectedTechs] = useState<string[]>(initialTechs);
+  const [activeSort, setActiveSort] = useState<SortOption>(initialSort);
+  const [includeResurrected, setIncludeResurrected] = useState(initialIncludeResurrected);
 
-                if (error) throw error;
-                setProjects(data || []);
-            } catch (error) {
-                console.error("Error fetching projects:", error);
-            } finally {
-                setIsLoading(false);
+  // Debounce search input (250ms)
+  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedQuery(searchQuery), 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+  const deferredQuery = React.useDeferredValue(debouncedQuery);
+
+  // Feed pagination state (batches of 12)
+  const [visibleLimit, setVisibleLimit] = useState(12);
+
+  // Reset pagination on filter or search changes
+  useEffect(() => {
+    setVisibleLimit(12);
+  }, [searchQuery, activeMode, selectedTechs, activeSort, includeResurrected]);
+
+  // Data states
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [stats, setStats] = useState<MarketplaceStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Modal states
+  const [selectedProjectForBuy, setSelectedProjectForBuy] = useState<Project | null>(null);
+  const [selectedProjectForCollab, setSelectedProjectForCollab] = useState<Project | null>(null);
+
+  // Sync state to URL search parameters
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('search', searchQuery);
+    if (activeMode !== 'all') params.set('mode', activeMode);
+    if (selectedTechs.length > 0) params.set('tech', selectedTechs.join(','));
+    if (activeSort !== 'newest') params.set('sort', activeSort);
+    if (includeResurrected) params.set('resurrected', 'true');
+
+    const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+    window.history.replaceState(null, '', newUrl);
+  }, [searchQuery, activeMode, selectedTechs, activeSort, includeResurrected]);
+
+  // Fetch projects and stats
+  const fetchMarketplaceData = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Fetch RPC Stats
+      const { data: statsData, error: statsErr } = await supabase.rpc('get_marketplace_stats');
+      if (!statsErr && statsData) {
+        setStats(statsData as MarketplaceStats);
+      }
+
+      // 2. Fetch Projects (Resilient to unapplied migrations)
+      let rawProjects: any[] | null = null;
+      let projectsErr: any = null;
+
+      const primaryRes = await supabase
+        .from('projects')
+        .select(`
+          *,
+          seller:profiles!projects_seller_id_fkey(
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (primaryRes.error) {
+        console.warn('Primary fetch with seller join failed, trying plain select fallback:', primaryRes.error.message);
+        const fallbackRes = await supabase
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (fallbackRes.error) {
+          projectsErr = fallbackRes.error;
+        } else {
+          rawProjects = fallbackRes.data || [];
+          if (rawProjects.length > 0) {
+            const sellerIds = Array.from(new Set(rawProjects.map((p) => p.seller_id).filter(Boolean)));
+            if (sellerIds.length > 0) {
+              const { data: profs } = await supabase
+                .from('profiles')
+                .select('id, username, avatar_url')
+                .in('id', sellerIds);
+
+              const profMap = new Map((profs || []).map((pr) => [pr.id, pr]));
+              rawProjects = rawProjects.map((p) => ({
+                ...p,
+                seller: profMap.get(p.seller_id) || null,
+              }));
             }
-        };
-
-        fetchProjects();
-    }, []);
-
-    // Filter Logic (Client-side for now, can be moved to DB query later for optimization)
-    const filteredProjects = projects.filter((project) => {
-        const matchesSearch =
-            project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (project.tech_stack && project.tech_stack.some((tech: string) => tech.toLowerCase().includes(searchQuery.toLowerCase())));
-
-        const matchesFilter = activeFilter === 'all' || project.interaction_type === activeFilter;
-
-        // Hide projects the user already has a relationship with (Owned/Purchased/Collab)
-        let isHidden = false;
-        if (user) {
-            const userRelatedIds = [
-                ...(user.owned_ids || []),
-                ...(user.purchased_ids || []),
-                ...(user.collab_ids || [])
-            ];
-
-            // Hide purchased items, BUT KEEP 'adopt' (Free) items visible so they show as "CLAIMED"
-            if ((user.purchased_ids || []).includes(project.id)) {
-                if (project.interaction_type !== 'adopt') {
-                    isHidden = true;
-                }
-            }
-
-            // Hide own projects? usually marketplaces allow you to see your own but maybe "manage" them. 
-            // For now, let's HIDE them from the "Buy" feed as per request (to avoid duplicates from dashboard)
-            /* TEMPORARILY DISABLED SO YOU CAN SEE YOUR UPLOAD
-            if (userRelatedIds.includes(project.id) || project.seller_id === user.id) {
-                isHidden = true;
-            }
-            */
+          }
         }
+      } else {
+        rawProjects = primaryRes.data || [];
+      }
 
-        // Hide filled collaborations from the feed
-        if (project.is_collab_filled) {
-            isHidden = true;
-        }
+      if (projectsErr) {
+        console.error('Failed to load projects:', projectsErr.message);
+        toast.error('Could not load marketplace projects');
+      } else if (rawProjects) {
+        const normalized: Project[] = rawProjects
+          .filter((p) => !p.is_archived)
+          .map((p) => {
+            let pricePaise = 0;
+            if (p.price_paise !== undefined && p.price_paise !== null) {
+              pricePaise = Number(p.price_paise);
+            } else if (p.price !== undefined && p.price !== null) {
+              pricePaise = Math.round(Number(p.price) * 100);
+            }
 
-        return matchesSearch && matchesFilter && !isHidden;
+            return {
+              ...p,
+              price_paise: pricePaise,
+              cause_of_death: p.cause_of_death || 'other',
+              abandoned_on: p.abandoned_on || null,
+              last_commit_at: p.last_commit_at || null,
+              epitaph: p.epitaph || null,
+              revived_at: p.revived_at || null,
+              views: p.views || 0,
+              has_archive: Boolean(p.has_archive),
+              has_repo: Boolean(p.has_repo),
+              is_sold: Boolean(p.is_sold),
+              is_collab_filled: Boolean(p.is_collab_filled),
+              is_archived: Boolean(p.is_archived),
+            } as Project;
+          });
+
+        setAllProjects(normalized);
+      }
+    } catch (err: unknown) {
+      console.error('Fetch error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMarketplaceData();
+  }, []);
+
+  // Separate revived projects for Resurrected Wall
+  const revivedProjects = useMemo(() => {
+    return allProjects.filter((p) => p.is_sold || p.is_collab_filled || p.revived_at);
+  }, [allProjects]);
+
+  // Top featured projects for bento grid using Workstream A algorithm
+  const featuredProjects = useMemo(() => {
+    return extractFeaturedFromList(allProjects);
+  }, [allProjects]);
+
+  // Client-side filtering & single-source counts
+  const { filteredFeed, synchronizedCounts } = useMemo(() => {
+    const query = deferredQuery.toLowerCase().trim();
+
+    // Base filter (search, tech stack, and resurrected toggle)
+    const baseList = allProjects.filter((p) => {
+      // Sold/filled visibility
+      if (!includeResurrected && (p.is_sold || p.is_collab_filled)) {
+        return false;
+      }
+
+      // Search match
+      if (query) {
+        const titleMatch = p.title.toLowerCase().includes(query);
+        const descMatch = (p.description || '').toLowerCase().includes(query);
+        const epitaphMatch = (p.epitaph || '').toLowerCase().includes(query);
+        const techMatch = Array.isArray(p.tech_stack) && p.tech_stack.some((t) => t.toLowerCase().includes(query));
+        if (!titleMatch && !descMatch && !epitaphMatch && !techMatch) return false;
+      }
+
+      // Tech Stack filter
+      if (selectedTechs.length > 0) {
+        const hasMatch = Array.isArray(p.tech_stack) && selectedTechs.some((st) =>
+          p.tech_stack.some((pt) => pt.toLowerCase() === st.toLowerCase())
+        );
+        if (!hasMatch) return false;
+      }
+
+      return true;
     });
 
-    // Calculate Dynamic Stats
-    const stats = {
-        forSale: projects.filter(p => p.interaction_type === 'buy' && !p.is_sold).length,
-        freeForks: projects.filter(p => p.interaction_type === 'adopt').length,
-        seekingCollabs: projects.filter(p => p.interaction_type === 'collab' && !p.is_collab_filled).length,
-        total: projects.length
+    // Counts reflecting current filters
+    const counts = {
+      all: baseList.length,
+      buy: baseList.filter((p) => p.interaction_type === 'buy').length,
+      adopt: baseList.filter((p) => p.interaction_type === 'adopt').length,
+      collab: baseList.filter((p) => p.interaction_type === 'collab').length,
     };
 
-    return (
-        <div className="min-h-screen bg-cyber-black text-foreground selection:bg-cyber-red selection:text-white">
-            <Header />
+    // Mode specific filter
+    let modeFiltered = baseList;
+    if (activeMode !== 'all') {
+      modeFiltered = baseList.filter((p) => p.interaction_type === activeMode);
+    }
 
-            <main className="container mx-auto px-4 py-8 md:py-12 space-y-8">
-                {/* Hero Section */}
-                <div className="relative z-10 flex flex-col items-center text-center space-y-4 max-w-4xl mx-auto pt-10 pb-6">
-                    {/* Radial Glow Background */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[150%] radial-glow-red pointer-events-none -z-10" />
+    // Sorting
+    const sorted = [...modeFiltered].sort((a, b) => {
+      if (activeSort === 'newest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (activeSort === 'views') {
+        return (b.views || 0) - (a.views || 0);
+      }
+      if (activeSort === 'price_asc') {
+        return (a.price_paise || 0) - (b.price_paise || 0);
+      }
+      if (activeSort === 'price_desc') {
+        return (b.price_paise || 0) - (a.price_paise || 0);
+      }
+      if (activeSort === 'longest_dead') {
+        const dateA = a.abandoned_on ? new Date(a.abandoned_on).getTime() : 0;
+        const dateB = b.abandoned_on ? new Date(b.abandoned_on).getTime() : 0;
+        return dateA - dateB;
+      }
+      return 0;
+    });
 
-                    {/* Status Badge */}
-                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-cyber-black/80 border border-cyber-gray/30 rounded-none cyber-clip-sm backdrop-blur-sm">
-                        <span className="w-2 h-2 rounded-full bg-cyber-red animate-pulse-glow" />
-                        <span className="font-mono text-xs md:text-sm text-cyber-red tracking-widest uppercase">
-                            SYSTEM ONLINE <span className="text-cyber-muted mx-2">//</span> {stats.total} DEAD PROJECTS INDEXED
-                        </span>
-                    </div>
+    return { filteredFeed: sorted, synchronizedCounts: counts };
+  }, [allProjects, deferredQuery, activeMode, selectedTechs, activeSort, includeResurrected]);
 
-                    {/* Main Heading */}
-                    <h1 className="font-display text-4xl md:text-7xl font-bold tracking-tight text-white leading-tight">
-                        Where Code Goes to <span className="text-cyber-red">Get</span><br />
-                        <span className="text-cyber-red">Resurrected</span>
-                    </h1>
+  // Card action dispatcher
+  const handleCardAction = (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
 
-                    {/* Subheading */}
-                    <p className="text-cyber-muted text-lg md:text-xl font-mono max-w-2xl leading-relaxed">
-                        A marketplace for abandoned projects. Adopt free repos, buy premium codebases, or find collaborators to finish what was started.
-                    </p>
+    // If unauthenticated, redirect with intent
+    if (!user) {
+      router.push(`/login?next=/project/${project.id}&intent=${project.interaction_type}`);
+      return;
+    }
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-16 pt-4 border-t border-cyber-gray/20 w-full md:w-fit">
-                        <div className="text-center group cursor-default">
-                            <div className="font-display text-4xl font-bold text-cyber-neon group-hover:text-cyber-neon/80 transition-colors">
-                                {/* Removed currency symbol for count clarity, or reuse if style demands it but represent COUNT */}
-                                {stats.forSale}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-widest text-cyber-muted mt-2 group-hover:text-cyber-gray transition-colors">
-                                For Sale
-                            </div>
-                        </div>
+    if (project.interaction_type === 'buy') {
+      setSelectedProjectForBuy(project);
+    } else if (project.interaction_type === 'adopt') {
+      executeClaim(project);
+    } else if (project.interaction_type === 'collab') {
+      setSelectedProjectForCollab(project);
+    }
+  };
 
-                        <div className="text-center group cursor-default">
-                            <div className="font-display text-4xl font-bold text-white group-hover:text-white/80 transition-colors">
-                                <span className="text-sm align-top opacity-50 mr-1">git</span>{stats.freeForks}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-widest text-cyber-muted mt-2 group-hover:text-cyber-gray transition-colors">
-                                Free Forks
-                            </div>
-                        </div>
+  // Instant free claim
+  const executeClaim = async (project: Project) => {
+    try {
+      const res = await fetch('/api/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to claim project');
+      }
 
-                        <div className="text-center group cursor-default">
-                            <div className="font-display text-4xl font-bold text-blue-400 group-hover:text-blue-400/80 transition-colors">
-                                <span className="text-xl align-middle mr-1">💀</span>{stats.seekingCollabs}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-widest text-cyber-muted mt-2 group-hover:text-cyber-gray transition-colors">
-                                Seeking Collabs
-                            </div>
-                        </div>
-                    </div>
+      if (data.alreadyClaimed) {
+        toast.info('Already in your Vault', {
+          description: 'You have already claimed this repository.',
+        });
+      } else {
+        toast.success('Project claimed successfully!', {
+          description: 'Added to your Operative Vault with instant download access.',
+        });
+      }
+      fetchMarketplaceData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Claim failed';
+      toast.error(msg);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setActiveMode('all');
+    setSelectedTechs([]);
+    setActiveSort('newest');
+    setIncludeResurrected(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-bg text-fg flex flex-col font-sans">
+      <CustomCursor />
+      <Header />
+
+      <main className="flex-1">
+        {/* ================= HERO SECTION (88svh) ================= */}
+        <section className="relative min-h-[88svh] flex flex-col justify-center items-center text-center px-4 sm:px-6 lg:px-8 pt-24 pb-12 overflow-hidden select-none">
+          {/* Static Ambient Red Glow in background */}
+          <div className="ambient-glow-red top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+
+          {/* Static Film Grain (High tier only, no blend mode) */}
+          <div className="hero-grain" />
+
+          {/* Souls Particle Canvas */}
+          <SoulsCanvas />
+
+          <div className="relative z-10 max-w-4xl mx-auto flex flex-col items-center space-y-6">
+            {/* Status Pill */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={introDone ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
+              transition={{ duration: 0.5, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-2 border border-line text-xs font-mono"
+            >
+              <span className="w-2 h-2 rounded-full bg-neon-green animate-pulse" />
+              <span className="text-muted">Live terminal</span>
+              <span className="text-line">•</span>
+              <span className="text-white font-medium">
+                {stats?.resurrected || 14} codebases resurrected
+              </span>
+            </motion.div>
+
+            {/* Main Headline: 2 lines on desktop */}
+            <h1 className="text-hero-display font-display font-semibold text-white tracking-tight leading-[0.98] text-balance max-w-[14ch] mx-auto">
+              <span className="block">
+                <SplitText delay={0.08}>Where dead code</SplitText>
+              </span>
+              <motion.span
+                className="block mt-1 sm:mt-2"
+                initial={{ opacity: 0, y: 12 }}
+                animate={introDone ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
+                transition={{ duration: 0.6, delay: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <span>gets </span>
+                <span className="font-accent italic font-normal text-brand-red inline-block">
+                  resurrected
+                </span>
+              </motion.span>
+            </h1>
+
+            {/* Subline: Geist 18-20px, 75% opacity, max-width 58ch */}
+            <p className="font-sans text-lg sm:text-xl text-fg/75 max-w-[58ch] mx-auto leading-relaxed">
+              Abandoned prototypes, unlaunched MVPs, and dormant repositories get a second life.
+              Buy exclusive IP, claim free open forks, or find a co-founder.
+            </p>
+
+            {/* Hero CTAs: Two 52px pills */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-3">
+              <Magnetic>
+                <a
+                  href="#marketplace-feed"
+                  className="inline-flex items-center justify-center h-[52px] px-8 rounded-full bg-white text-black font-sans font-semibold text-[15px] hover:bg-neutral-200 transition-colors shadow-lg"
+                >
+                  Browse projects
+                </a>
+              </Magnetic>
+
+              <Link
+                href="/submit"
+                className="inline-flex items-center justify-center h-[52px] px-8 rounded-full bg-surface-2 border border-line text-white hover:border-white/20 hover:bg-surface-3 transition-colors text-[15px] font-medium"
+              >
+                List a dead project
+              </Link>
+            </div>
+
+            {/* Centered Scroll Indicator */}
+            <div className="pt-8 flex flex-col items-center gap-2 select-none pointer-events-none">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-muted">Scroll</span>
+              <div className="w-[1.5px] h-8 bg-line relative overflow-hidden rounded-full">
+                <div className="w-full h-1/2 bg-white/70 animate-scroll-indicator" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ================= UNBOXED LIVE STATS ROW ================= */}
+        <section className="py-12 border-t border-line/60 bg-surface/30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6 text-center divide-y md:divide-y-0 md:divide-x divide-line/60">
+              <div className="space-y-1 pt-4 md:pt-0">
+                <div className="text-3xl sm:text-5xl font-display font-semibold text-white">
+                  {stats?.live_total || allProjects.filter((p) => !p.is_sold && !p.is_collab_filled).length}
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted">
+                  Live projects
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-4 md:pt-0">
+                <div className="text-3xl sm:text-5xl font-display font-semibold text-neon-green">
+                  {stats?.for_sale || allProjects.filter((p) => p.interaction_type === 'buy' && !p.is_sold).length}
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted">
+                  For sale
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-4 md:pt-0">
+                <div className="text-3xl sm:text-5xl font-display font-semibold text-amber">
+                  {stats?.free_forks || allProjects.filter((p) => p.interaction_type === 'adopt').length}
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted">
+                  Free forks
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-4 md:pt-0">
+                <div className="text-3xl sm:text-5xl font-display font-semibold text-blue-accent">
+                  {stats?.open_collabs || allProjects.filter((p) => p.interaction_type === 'collab' && !p.is_collab_filled).length}
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted">
+                  Open collabs
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-4 md:pt-0 col-span-2 md:col-span-1">
+                <div className="text-3xl sm:text-5xl font-display font-semibold text-brand-red">
+                  {stats?.resurrected || revivedProjects.length}
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted">
+                  Resurrected
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ================= TECH MARQUEE ================= */}
+        <TechMarquee />
+
+        {/* ================= HOW IT WORKS STACK ================= */}
+        <HowItWorksStack />
+
+        {/* ================= FEATURED RESURRECTIONS BENTO ================= */}
+        {featuredProjects.length >= 2 && (
+          <FeaturedResurrections
+            projects={featuredProjects}
+            onActionClick={handleCardAction}
+          />
+        )}
+
+        {/* ================= STICKY FILTER BAR & MAIN FEED ================= */}
+        <div id="marketplace-feed" className="scroll-mt-20">
+          <FilterBar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            activeMode={activeMode}
+            setActiveMode={setActiveMode}
+            selectedTechs={selectedTechs}
+            setSelectedTechs={setSelectedTechs}
+            activeSort={activeSort}
+            setActiveSort={setActiveSort}
+            includeResurrected={includeResurrected}
+            setIncludeResurrected={setIncludeResurrected}
+            totalMatching={filteredFeed.length}
+            counts={synchronizedCounts}
+            onClearFilters={handleClearFilters}
+          />
+
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <ProjectCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : filteredFeed.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredFeed.slice(0, visibleLimit).map((project, idx) => (
+                    <Reveal key={project.id} delay={Math.min(idx * 0.04, 0.3)}>
+                      <ProjectCard
+                        project={project}
+                        onActionClick={handleCardAction}
+                      />
+                    </Reveal>
+                  ))}
                 </div>
 
-                {/* Filter Bar */}
-                <div className="bg-cyber-black/95 backdrop-blur py-4 border-b border-cyber-gray/30 -mx-4 px-4 md:mx-0 md:px-0 md:rounded-lg md:border-none">
-                    <FilterBar
-                        searchQuery={searchQuery}
-                        setSearchQuery={setSearchQuery}
-                        activeFilter={activeFilter}
-                        setActiveFilter={setActiveFilter}
-                    />
-                </div>
-
-                {/* Projects Grid */}
-                {filteredProjects.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredProjects.map((project, index) => (
-                            <CyberCard
-                                key={project.id}
-                                project={project}
-                                index={index}
-                                isOwner={user?.id === project.seller_id}
-                                isPurchased={(user?.purchased_ids || []).includes(project.id)}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-20 border border-dashed border-cyber-gray rounded-lg">
-                        <p className="font-display tracking-widest text-cyber-muted text-xl">NO_SIGNALS_DETECTED</p>
-                        <p className="font-mono text-sm text-cyber-gray mt-2">Try adjusting your sensors (filters).</p>
-                    </div>
+                {filteredFeed.length > visibleLimit && (
+                  <div className="pt-12 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleLimit((prev) => prev + 12)}
+                      className="h-12 px-8 rounded-full bg-surface-2 border border-line text-white hover:border-white/20 hover:bg-surface-3 transition-colors text-sm font-medium shadow-md flex items-center gap-2"
+                    >
+                      <span>Load more dead codebases</span>
+                      <span className="font-mono text-xs text-muted">
+                        ({filteredFeed.length - visibleLimit} remaining)
+                      </span>
+                    </button>
+                  </div>
                 )}
-            </main>
-            <Footer />
+              </>
+            ) : (
+              <EmptyState
+                title="No dead projects match your criteria"
+                description="Try loosening your filters or search keywords to uncover other buried codebases."
+                actionLabel="Clear all filters"
+                onAction={handleClearFilters}
+              />
+            )}
+          </section>
         </div>
-    );
-};
 
-export default Home;
+        {/* ================= RESURRECTED WALL ================= */}
+        <div className="contain-content-auto">
+          <ResurrectedWall projects={revivedProjects} />
+        </div>
+
+        {/* ================= CTA BAND ================= */}
+        <section className="py-24 relative overflow-hidden text-center border-t border-line contain-content-auto">
+          <div className="ambient-glow-cta top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          <div className="relative z-10 max-w-2xl mx-auto px-4 space-y-6">
+            <h2 className="text-3xl sm:text-5xl font-display font-semibold text-white tracking-tight">
+              Got a dead project?
+            </h2>
+            <p className="font-sans text-muted text-base sm:text-lg">
+              Don’t let your engineering rot in private repos. Pass it to a builder who will ship it.
+            </p>
+            <div>
+              <Magnetic>
+                <Link
+                  href="/submit"
+                  className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-white text-black font-sans font-semibold text-sm hover:bg-neutral-200 transition-colors shadow-xl"
+                >
+                  <span>List it now</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </Magnetic>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* ================= MODALS ================= */}
+      {selectedProjectForBuy && (
+        <PaymentModal
+          project={selectedProjectForBuy}
+          isOpen={Boolean(selectedProjectForBuy)}
+          onClose={() => setSelectedProjectForBuy(null)}
+          onSuccess={() => {
+            fetchMarketplaceData();
+            setSelectedProjectForBuy(null);
+          }}
+        />
+      )}
+
+      {selectedProjectForCollab && (
+        <CollabRequestModal
+          project={selectedProjectForCollab}
+          isOpen={Boolean(selectedProjectForCollab)}
+          onClose={() => setSelectedProjectForCollab(null)}
+          onSuccess={() => {
+            fetchMarketplaceData();
+            setSelectedProjectForCollab(null);
+          }}
+        />
+      )}
+
+      <Footer />
+    </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-bg" />}>
+      <HomeContent />
+    </Suspense>
+  );
+}

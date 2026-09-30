@@ -1,138 +1,358 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import CyberButton from "@/components/ui/CyberButton";
-import { Skull, Menu, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "@/context/AuthContext";
+import React, { useState, useRef, useEffect, useId } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Menu,
+  X,
+  LayoutDashboard,
+  Shield,
+  MessageSquare,
+  Settings,
+  LogOut,
+  ChevronDown,
+} from 'lucide-react';
+import SkullMark from '@/components/brand/SkullMark';
+import { useAuth } from '@/context/AuthContext';
+import Button from '@/components/ui/Button';
+import Avatar from '@/components/ui/Avatar';
+import NotificationBell from '@/components/ui/NotificationBell';
+import { cn } from '@/lib/utils';
 
-const Header = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+export const Header: React.FC = () => {
+  const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [hoveredLink, setHoveredLink] = useState<string | null>(null);
+
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
+  const navTrackId = useId();
+
+  // Scrolled state detection via IntersectionObserver sentinel instead of scroll state loops
+  useEffect(() => {
+    const sentinel = document.createElement('div');
+    sentinel.setAttribute('data-sentinel', 'nav-top');
+    sentinel.style.position = 'absolute';
+    sentinel.style.top = '0';
+    sentinel.style.left = '0';
+    sentinel.style.width = '100%';
+    sentinel.style.height = '16px';
+    sentinel.style.pointerEvents = 'none';
+    sentinel.style.zIndex = '-1';
+    document.body.appendChild(sentinel);
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsScrolled(!entry.isIntersecting);
+      },
+      { threshold: 0 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+      if (sentinel.parentNode) {
+        sentinel.parentNode.removeChild(sentinel);
+      }
+    };
+  }, []);
+
+  // Close user dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Body scroll lock and focus management for mobile menu
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      prevFocusRef.current = document.activeElement as HTMLElement | null;
+      document.body.style.overflow = 'hidden';
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setIsMobileMenuOpen(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+        if (prevFocusRef.current) {
+          prevFocusRef.current.focus();
+        }
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [isMobileMenuOpen]);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setIsUserMenuOpen(false);
+  }, [pathname]);
+
+  const navLinks = [
+    { label: 'Browse', href: '/' },
+    { label: 'Submit project', href: '/submit' },
+  ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-cyber-gray bg-cyber-black/80 backdrop-blur supports-[backdrop-filter]:bg-cyber-black/60">
-      <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-        {/* Logo / Title */}
-        <Link href="/" className="flex items-center gap-2 group z-50">
-          <div className="relative">
-            <Skull className="h-6 w-6 text-cyber-red transition-transform group-hover:rotate-12" />
-            <div className="absolute inset-0 bg-cyber-red/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-display text-lg font-bold tracking-wider text-white group-hover:text-cyber-red transition-colors leading-none">
-              THE GRAVEYARD
+    <>
+      <header
+        className={cn(
+          'fixed top-0 left-0 right-0 z-header w-full transition-colors duration-200 select-none',
+          'h-[60px] md:h-[68px] flex items-center',
+          isScrolled
+            ? 'bg-[#0a0a0b]/90 border-b border-line shadow-lg'
+            : 'bg-transparent border-b border-transparent'
+        )}
+      >
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between px-4 sm:px-6">
+          {/* Left: Logo & Wordmark */}
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 group shrink-0"
+            aria-label="The Graveyard home"
+          >
+            <div className="relative" data-intro-target="logo">
+              <SkullMark className="h-[26px] w-[26px] text-brand-red transition-transform group-hover:rotate-12 duration-200" />
+            </div>
+            <span className="font-display text-[19px] font-semibold tracking-tight text-white whitespace-nowrap group-hover:text-neutral-200 transition-colors">
+              The Graveyard
             </span>
-          </div>
-        </Link>
+          </Link>
 
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-8">
-          <nav className="flex items-center gap-8 text-sm font-mono text-cyber-muted">
-            <Link href="/" className="hover:text-cyber-neon transition-colors">Browse</Link>
-            <Link href="/submit" className="hover:text-cyber-neon transition-colors">Submit Project</Link>
+          {/* Center: Sliding Pill Nav Track */}
+          <nav
+            className="hidden md:flex items-center p-1 rounded-full bg-white/[0.04] border border-line"
+            onMouseLeave={() => setHoveredLink(null)}
+          >
+            {navLinks.map((link) => {
+              const isActive = pathname === link.href;
+              const isHovered = hoveredLink === link.href;
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onMouseEnter={() => setHoveredLink(link.href)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'relative px-5 py-1.5 rounded-full font-sans text-[15px] font-medium transition-colors z-10',
+                    isActive ? 'text-white' : 'text-muted hover:text-fg'
+                  )}
+                >
+                  {(isHovered || (!hoveredLink && isActive)) && (
+                    <motion.div
+                      layoutId={`nav-pill-${navTrackId}`}
+                      className="absolute inset-0 bg-white/10 rounded-full -z-10"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
           </nav>
 
-          <div className="flex items-center gap-4 pl-4 border-l border-cyber-gray/30">
+          {/* Right: Auth State & Actions */}
+          <div className="flex items-center gap-3 shrink-0">
             {user ? (
-              <div className="flex items-center gap-4">
-                <Link href="/dashboard" className="font-mono text-cyber-neon tracking-wider animate-pulse-glow hover:text-white transition-colors">
-                  [ {user.username} ]
-                </Link>
-                <CyberButton
-                  variant="ghost"
-                  className="border-cyber-red/50 text-cyber-red hover:bg-cyber-red/10 text-xs px-3 h-8"
-                  onClick={logout}
-                >
-                  LOGOUT
-                </CyberButton>
+              <div className="flex items-center gap-3">
+                <NotificationBell />
+
+                {/* User Dropdown */}
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="h-10 flex items-center gap-2 rounded-full px-2 py-1 border border-line bg-surface-2 hover:border-white/20 transition-colors"
+                  >
+                    <Avatar username={user.username || 'operative'} size="sm" />
+                    <span className="hidden sm:inline font-mono text-xs text-fg px-1">
+                      @{user.username || 'operative'}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted mr-1" />
+                  </button>
+
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 rounded-modal bg-surface border border-line p-2 shadow-2xl z-dropdown animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-3 py-2 border-b border-line mb-1">
+                        <p className="font-sans text-xs font-semibold text-white truncate">
+                          {user.username || 'Operative'}
+                        </p>
+                        <p className="font-mono text-[11px] text-muted truncate">
+                          {user.email}
+                        </p>
+                      </div>
+
+                      <Link
+                        href="/dashboard"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
+                      >
+                        <LayoutDashboard className="w-4 h-4" />
+                        <span>Console & listings</span>
+                      </Link>
+
+                      <Link
+                        href="/dashboard?tab=vault"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
+                      >
+                        <Shield className="w-4 h-4 text-neon-green" />
+                        <span>Operative Vault</span>
+                      </Link>
+
+                      <Link
+                        href="/dashboard?tab=messages"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span>Messages</span>
+                      </Link>
+
+                      <Link
+                        href="/dashboard?tab=settings"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span>Settings</span>
+                      </Link>
+
+                      <div className="my-1 border-t border-line" />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-sans text-brand-red hover:bg-brand-red/10 rounded-xl transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign out</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
-              <Link href="/login">
-                <CyberButton variant="ghost" className="border-cyber-gray text-cyber-foreground hover:bg-cyber-gray/20 hover:text-white font-mono tracking-wide">
-                  <span className="mr-2">→</span>
-                  ACCESS TERMINAL
-                </CyberButton>
-              </Link>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Link
+                  href="/login"
+                  className="h-10 px-3.5 flex items-center justify-center font-sans text-[15px] font-medium text-muted hover:text-white transition-colors"
+                >
+                  Sign in
+                </Link>
+                <Link href="/login?intent=signup">
+                  <Button variant="primary" mode="brand" size="sm">
+                    Get started
+                  </Button>
+                </Link>
+              </div>
             )}
+
+            {/* Mobile Hamburger Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="md:hidden h-10 w-10 flex items-center justify-center rounded-full border border-line text-muted hover:text-white transition-colors"
+              aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isMobileMenuOpen}
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+      </header>
 
-        {/* Mobile Menu Toggle */}
-        <button
-          className="md:hidden text-cyber-muted hover:text-white z-50"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
-
-      {/* Mobile Menu Overlay */}
+      {/* Full-screen Solid Mobile Menu (No blur, high-contrast, locked scroll) */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            ref={mobileMenuRef}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 top-16 bg-cyber-black/95 backdrop-blur-xl border-t border-cyber-gray/30 p-6 md:hidden flex flex-col gap-8 h-[calc(100vh-4rem)]" // Height adjusted for header
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.16 }}
+            className="fixed inset-0 top-[60px] z-modal bg-[#0a0a0b] text-white flex flex-col justify-between px-6 py-8 md:hidden"
           >
-            <nav className="flex flex-col gap-6 font-mono text-lg text-cyber-muted">
-              <Link href="/" className="hover:text-cyber-neon transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
-                Browse Projects
-              </Link>
-              <Link href="/submit" className="hover:text-cyber-neon transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
-                Submit Project
-              </Link>
+            <nav className="flex flex-col gap-6 pt-4">
+              {navLinks.map((link, idx) => (
+                <motion.div
+                  key={link.href}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.04, duration: 0.2 }}
+                >
+                  <Link
+                    href={link.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="font-display text-4xl font-semibold tracking-tight text-white hover:text-muted transition-colors block"
+                  >
+                    {link.label}
+                  </Link>
+                </motion.div>
+              ))}
             </nav>
 
-            <div className="mt-auto pb-8">
-              {user ? (
-                <div className="space-y-4">
-                  <div className="font-mono text-cyber-neon text-center tracking-wider pb-4 border-b border-cyber-gray/20">
-                    IDENTIFIED: {user.username}
-                  </div>
-
-                  <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)}>
-                    <CyberButton variant="ghost" className="w-full border border-cyber-neon text-cyber-neon py-4 cyber-clip-sm font-bold tracking-wider hover:bg-cyber-neon/10 mb-4">
-                      ACCESS DASHBOARD
-                    </CyberButton>
+            <div className="pt-8 border-t border-line space-y-3">
+              {!user ? (
+                <>
+                  <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="block">
+                    <Button variant="secondary" size="md" fullWidth>
+                      Sign in
+                    </Button>
                   </Link>
-                  <CyberButton
-                    variant="ghost"
-                    className="w-full border border-cyber-red text-cyber-red py-4 cyber-clip-sm font-bold tracking-wider hover:bg-cyber-red/10"
-                    onClick={async () => {
-                      try {
-                        await logout();
-                      } catch (error) {
-                        console.error("Logout failed:", error);
-                      } finally {
-                        setIsMobileMenuOpen(false);
-                      }
-                    }}
-                  >
-                    TERMINATE SESSION
-                  </CyberButton>
-                </div>
+                  <Link href="/login?intent=signup" onClick={() => setIsMobileMenuOpen(false)} className="block">
+                    <Button variant="primary" mode="brand" size="md" fullWidth>
+                      Get started
+                    </Button>
+                  </Link>
+                </>
               ) : (
-                <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                  <CyberButton className="w-full bg-cyber-red text-white py-4 cyber-clip-sm font-bold tracking-wider">
-                    <span className="mr-2">→</span>
-                    ACCESS TERMINAL
-                  </CyberButton>
-                </Link>
+                <div className="space-y-2">
+                  <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block">
+                    <Button variant="secondary" size="md" fullWidth>
+                      Console & listings
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    fullWidth
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="text-brand-red"
+                  >
+                    Sign out
+                  </Button>
+                </div>
               )}
             </div>
-
-            {/* Scanline overlay for menu */}
-            <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)] bg-[length:100%_4px]" />
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Decorative Scanline below header */}
-      <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-cyber-red/50 to-transparent opacity-50" />
-    </header>
+    </>
   );
 };
 

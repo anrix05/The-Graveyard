@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { mockProjects } from "@/data/mockProjects";
 import { supabase } from "@/lib/supabase";
 
 interface User {

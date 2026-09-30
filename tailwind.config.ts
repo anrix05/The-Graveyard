@@ -12,114 +12,75 @@ export default {
   theme: {
     container: {
       center: true,
-      padding: "1rem",
+      padding: "1.5rem",
       screens: {
         sm: "640px",
         md: "768px",
         lg: "1024px",
         xl: "1280px",
-        "2xl": "1400px",
+        "2xl": "1280px",
       },
     },
     extend: {
       colors: {
-        // Cyber Color Palette
-        "cyber-black": "#0a0a0a",
-        "cyber-dark": "#151515",
-        "cyber-red": "#ff2a2a",
-        "cyber-neon": "#39ff14",
-        "cyber-gray": "#2d2d2d",
-        "cyber-muted": "#6b7280", // Using a muted gray as fallback
+        // v2 Surfaces & Lines
+        bg: "var(--bg)",
+        surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        "surface-3": "var(--surface-3)",
+        line: "var(--line)",
+        border: "var(--line)",
+        fg: "var(--fg)",
+        muted: "var(--muted)",
 
-        // Semantic Colors
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "#0a0a0a", // Default to cyber-black
-        foreground: "#ededed", // Light gray for text
+        // Mode Accents
+        "neon-green": "#39ff14", // Buy / For Sale
+        amber: "#fbbf24",       // Adopt / Free Fork
+        "blue-accent": "#3b82f6",// Collab / Seeking Partner
+        "brand-red": "#ff2a2a",  // Brand highlight & danger
+
+        // Button Fills (meeting 4.5:1 contrast)
+        "btn-buy": "#39ff14",
+        "btn-adopt": "#fbbf24",
+        "btn-collab": "#2563eb",
+        "btn-danger": "#dc2626",
+
+        // Radix / Semantic Mappings
+        background: "var(--bg)",
+        foreground: "var(--fg)",
         primary: {
-          DEFAULT: "#ff2a2a", // cyber-red
+          DEFAULT: "#ff2a2a",
           foreground: "#ffffff",
         },
         secondary: {
-          DEFAULT: "#39ff14", // cyber-neon
-          foreground: "#000000",
+          DEFAULT: "var(--surface-2)",
+          foreground: "var(--fg)",
         },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "#151515", // cyber-dark
-          foreground: "#ededed",
-        },
-      },
-      fontFamily: {
-        display: ["var(--font-chakra)", "sans-serif"],
-        mono: ["var(--font-jetbrains)", "monospace"],
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        card: "20px",
+        modal: "24px",
+        input: "12px",
+        popover: "16px",
+      },
+      zIndex: {
+        header: "40",
+        dropdown: "50",
+        modal: "60",
+        toast: "70",
+      },
+      fontFamily: {
+        display: ["var(--font-display)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        accent: ["var(--font-accent)", "Georgia", "serif"],
+        serif: ["var(--font-accent)", "Georgia", "serif"],
       },
       boxShadow: {
-        "glow-red": "0 0 20px rgba(255, 42, 42, 0.5)",
-        "glow-neon": "0 0 20px rgba(57, 255, 20, 0.5)",
-        "glow-subtle": "0 0 10px rgba(255, 42, 42, 0.3)",
-      },
-      keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
-        glitch: {
-          "0%, 100%": { transform: "translate(0)" },
-          "20%": { transform: "translate(-2px, 2px)" },
-          "40%": { transform: "translate(-2px, -2px)" },
-          "60%": { transform: "translate(2px, 2px)" },
-          "80%": { transform: "translate(2px, -2px)" },
-        },
-        "pulse-glow": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.5" },
-        },
-        flicker: {
-          "0%, 100%": { opacity: "1" },
-          "92%": { opacity: "1" },
-          "93%": { opacity: "0.8" },
-          "94%": { opacity: "1" },
-          "96%": { opacity: "0.9" },
-          "97%": { opacity: "1" },
-        },
-        scanline: {
-          "0%": { transform: "translateY(-100%)" },
-          "100%": { transform: "translateY(100%)" },
-        },
-      },
-      animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-        glitch: "glitch 0.3s ease-in-out",
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
-        flicker: "flicker 3s ease-in-out infinite",
-        scanline: "scanline 8s linear infinite",
+        "glow-red": "0 0 28px rgba(255, 42, 42, 0.25)",
+        "glow-neon": "0 0 24px rgba(57, 255, 20, 0.25)",
+        "glow-amber": "0 0 24px rgba(251, 191, 36, 0.25)",
+        "glow-blue": "0 0 24px rgba(59, 130, 246, 0.25)",
       },
     },
   },

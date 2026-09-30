@@ -1,106 +1,102 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { getAuthenticatedUser, getSupabaseAdmin } from '@/lib/supabase';
 
-const secureDownloadSchema = z.object({
-    projectId: z.string().uuid("projectId must be a valid UUID")
+const downloadQuerySchema = z.object({
+  projectId: z.string().uuid('Invalid project ID format.'),
 });
 
-export async function POST(req: Request) {
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceRoleKey) {
-        console.error("CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing from environment.");
-        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+export async function GET(req: Request) {
+  try {
+    // 1. Authenticate user from JWT
+    const { user, error: authError } = await getAuthenticatedUser(req);
+    if (authError || !user) {
+      return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: authError || 'Authentication required' } }, { status: 401 });
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
+    // 2. Parse query parameters
+    const { searchParams } = new URL(req.url);
+    const parsed = downloadQuerySchema.safeParse({
+      projectId: searchParams.get('projectId'),
     });
 
-    try {
-        const rawBody = await req.json();
-        const parsed = secureDownloadSchema.safeParse(rawBody);
-
-        if (!parsed.success) {
-            console.warn("Secure download validation failed:", parsed.error.format());
-            return NextResponse.json({ error: 'Invalid input parameters' }, { status: 400 });
-        }
-
-        const { projectId } = parsed.data;
-
-        // 1. Auth Check
-        const authHeader = req.headers.get('Authorization');
-        if (!authHeader) return NextResponse.json({ error: 'Authorization required' }, { status: 401 });
-        const token = authHeader.replace('Bearer ', '');
-
-        const supabaseUser = createClient(
-            supabaseUrl,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            { global: { headers: { Authorization: `Bearer ${token}` } } }
-        );
-
-        const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
-        if (authError || !user) {
-            console.warn("Auth user lookup failed during secure download:", authError);
-            return NextResponse.json({ error: 'Unauthorized user' }, { status: 401 });
-        }
-
-        // 2. Fetch Project File Path
-        const { data: project, error: projError } = await supabaseAdmin
-            .from('projects')
-            .select('file_url, seller_id')
-            .eq('id', projectId)
-            .single();
-
-        if (projError || !project || !project.file_url) {
-            console.error(`Project lookup failed or missing file_url for ID ${projectId}:`, projError);
-            return NextResponse.json({ error: 'File not found' }, { status: 404 });
-        }
-
-        // 3. Verify Access Rights (Owner OR Buyer OR Partner)
-        let hasAccess = false;
-
-        // A. Is Owner?
-        if (project.seller_id === user.id) hasAccess = true;
-
-        if (!hasAccess) {
-            // B. Is Buyer/Partner?
-            const { data: tx, error: txError } = await supabaseAdmin
-                .from('transactions')
-                .select('id')
-                .eq('project_id', projectId)
-                .eq('buyer_id', user.id)
-                .eq('status', 'completed')
-                .maybeSingle();
-
-            if (txError) {
-                console.error("Failed to query transaction for secure download access:", txError);
-                return NextResponse.json({ error: 'Access verification failed' }, { status: 500 });
-            }
-
-            if (tx) hasAccess = true;
-        }
-
-        if (!hasAccess) {
-            return NextResponse.json({ error: 'Access Denied. Purchase required.' }, { status: 403 });
-        }
-
-        // 4. Generate Signed URL (Valid for 60 seconds)
-        const { data, error: signedUrlError } = await supabaseAdmin
-            .storage
-            .from('project-files')
-            .createSignedUrl(project.file_url, 60);
-
-        if (signedUrlError) {
-            console.error("Failed to generate signed storage URL:", signedUrlError);
-            return NextResponse.json({ error: 'Failed to generate download link' }, { status: 500 });
-        }
-
-        return NextResponse.json({ url: data.signedUrl });
-
-    } catch (error: any) {
-        console.error("Unhandled download API exception:", error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message || 'Invalid parameters.' } },
+        { status: 400 }
+      );
     }
+
+    const { projectId } = parsed.data;
+    const supabaseAdmin = getSupabaseAdmin();
+
+    // 3. Verify user is either the seller or an authorized buyer/claimer with completed transaction
+    const { data: project } = await supabaseAdmin
+      .from('projects')
+      .select('id, seller_id, title')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (!project) {
+      return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Project not found.' } }, { status: 404 });
+    }
+
+    const isSeller = project.seller_id === user.id;
+
+    if (!isSeller) {
+      const { data: tx } = await supabaseAdmin
+        .from('transactions')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('buyer_id', user.id)
+        .eq('status', 'completed')
+        .maybeSingle();
+
+      if (!tx) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'FORBIDDEN',
+              message: 'You are not authorized to download this asset. Purchase or claim is required.',
+            },
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 4. Fetch asset record from project_assets
+    const { data: asset } = await supabaseAdmin
+      .from('project_assets')
+      .select('file_path')
+      .eq('project_id', projectId)
+      .maybeSingle();
+
+    if (!asset?.file_path) {
+      return NextResponse.json(
+        { error: { code: 'NO_FILE', message: 'No downloadable file archive exists for this project.' } },
+        { status: 404 }
+      );
+    }
+
+    // 5. Generate short-lived signed URL (60 seconds)
+    const { data: signedData, error: signError } = await supabaseAdmin.storage
+      .from('project-files')
+      .createSignedUrl(asset.file_path, 60);
+
+    if (signError || !signedData?.signedUrl) {
+      console.error('Failed to create signed download URL:', signError);
+      return NextResponse.json(
+        { error: { code: 'STORAGE_ERROR', message: 'Failed to generate secure download link.' } },
+        { status: 500 }
+      );
+    }
+
+    // Return downloadUrl only (never leak file_path)
+    return NextResponse.json({ downloadUrl: signedData.signedUrl });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal Server Error';
+    console.error('Unhandled secure-download exception:', err);
+    return NextResponse.json({ error: { code: 'SERVER_ERROR', message } }, { status: 500 });
+  }
 }
