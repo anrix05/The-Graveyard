@@ -1,6 +1,6 @@
 # Supabase Database Schemas & Migrations
 
-This directory contains the database structure, security policies, storage buckets, and incremental migrations for **The Graveyard**.
+This directory contains the database structure, Row Level Security (RLS) policies, storage bucket configurations, and incremental migrations for **The Graveyard** (v2.8).
 
 ---
 
@@ -8,54 +8,57 @@ This directory contains the database structure, security policies, storage bucke
 
 ```
 supabase/
-├── schemas/                # Authoritative base schemas & consolidated security scripts
-│   ├── init_db.sql         # Base tables, triggers, and functions
-│   ├── reconciled_policies.sql # Consolidated RLS policies, unique constraints & storage setup
-│   ├── security_hardening.sql  # Additional integrity checks & hardening rules
-│   ├── setup_database.sql  # Alternative consolidated database setup
-│   ├── setup_payment_db.sql # Razorpay transaction table setup
-│   └── setup_storage.sql   # Storage bucket initialization
+├── RUN_IN_SUPABASE_SQL_EDITOR.sql      # ⭐ Primary consolidated one-click setup script
 │
-└── migrations/             # Incremental schema migrations, patches & fixes
-    ├── add_analytics_and_reviews.sql
-    ├── add_archived_column.sql
-    ├── add_collab_filled_to_projects.sql
-    ├── add_contact_info_to_profiles.sql
-    ├── add_delete_flags_to_messages.sql
-    ├── add_github_repo_columns.sql
-    ├── add_github_username_to_transactions.sql
-    ├── add_metadata_to_transactions.sql
-    ├── add_phone_number_to_profiles.sql
-    ├── add_repo_link_column.sql
-    ├── allow_buyer_view_transactions.sql
-    ├── allow_seller_delete_project.sql
-    ├── allow_seller_project_update.sql
-    ├── allow_seller_update_transactions.sql
-    ├── allow_seller_view_transactions.sql
-    ├── create_messages_table.sql
-    ├── create_transactions_table.sql
-    ├── fix_cascade_delete.sql
-    ├── fix_collaboration_schema.sql
-    ├── fix_database.sql
-    ├── fix_seller_transaction_visibility.sql
-    ├── fix_sold_rpc.sql
-    ├── fix_storage.sql
-    ├── fix_transactions_rls.sql
-    └── secure_messages_rls.sql
+├── migrations/                         # Authoritative chronological migrations
+│   ├── 20261001000000_graveyard_v2.sql           # Base tables, RLS, transactions, paise pricing
+│   ├── 20261001010000_graveyard_v3_tombstones.sql   # Tombstone telemetry & synchronized feed RPC
+│   ├── 20261001020000_graveyard_v4_details.sql      # Project details, file trees, roles, completion %
+│   └── [legacy incremental migrations]           # Historical schema patches
+│
+└── schemas/                            # Modular reference schemas
+    ├── init_db.sql                     # Base tables & enums
+    ├── reconciled_policies.sql         # Consolidated RLS policies & storage rules
+    └── security_hardening.sql          # Additional integrity checks
 ```
 
 ---
 
-## Quick Setup Instructions
+## Recommended Setup (Fresh Project)
 
-For a fresh database instance in the [Supabase SQL Editor](https://app.supabase.com):
+For a fresh Supabase project:
 
-1. **Step 1: Execute Base Schema**
-   - Run `schemas/init_db.sql` to generate core tables (`profiles`, `projects`, `transactions`, `messages`), enums, and foreign keys.
+### Option A: One-Click SQL Setup (Recommended)
+1. Open the [Supabase Dashboard](https://app.supabase.com) → **SQL Editor**.
+2. Copy and paste the entire contents of **`RUN_IN_SUPABASE_SQL_EDITOR.sql`**.
+3. Click **Run**. This establishes:
+   - All tables (`profiles`, `projects`, `transactions`, `collaborations`, `messages`, `notifications`, `project_assets`).
+   - RLS policies ensuring buyer transaction privacy, private messaging, and delivery asset security.
+   - Synchronized count RPCs (`get_marketplace_stats`, `get_marketplace_feed_v3`).
+   - Storage buckets: `project-files` (private archives) and `project-assets` (public covers/screenshots).
 
-2. **Step 2: Execute Authoritative Security & Policies**
-   - Run `schemas/reconciled_policies.sql`.
-   - This script establishes:
-     - Strict Row Level Security (RLS) on all tables.
-     - Unique indexes preventing duplicate completed transactions and duplicate payment IDs.
-     - Private `project-files` storage bucket setup with authenticated upload/download policies.
+### Option B: Chronological Migrations
+If using the Supabase CLI (`supabase db push`) or executing migrations sequentially:
+1. `migrations/20261001000000_graveyard_v2.sql`
+2. `migrations/20261001010000_graveyard_v3_tombstones.sql`
+3. `migrations/20261001020000_graveyard_v4_details.sql`
+
+---
+
+## Data Seeding & Verification
+
+After database initialization, populate the 24-project demo marketplace using the automated seed harness:
+
+```bash
+npm run seed
+```
+
+This creates the demo seller (`seller@graveyard.dev`), demo buyer (`buyer@graveyard.dev`), 8 community developers, and 24 fully populated listings with real downloadable archives.
+
+---
+
+## Key Schema & Security Principles
+
+1. **Paise Pricing:** Monetary values are strictly stored as integers in paise (`price_paise`) to prevent floating-point calculation errors. UI displays formatted Indian Rupees (`formatINR`).
+2. **Delivery Asset Isolation:** The public `projects` table only exposes boolean indicators (`has_archive`, `has_repo`). Sensitive access coordinates reside in `project_assets` with strict RLS restricted to verified buyers and project owners.
+3. **Account Deletion Protocol:** Self-service deletion (`/api/account/delete`) anonymizes the profile (`deleted_<shortid>`), archives owner listings, and permanently bans the auth account, while strictly preserving transaction records so prior purchasers retain download access.

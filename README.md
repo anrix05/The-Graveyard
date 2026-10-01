@@ -1,5 +1,5 @@
 # The Graveyard ⚰️⚡
-## V2.0: Motion-Forward Developer Marketplace & Resurrected Codebase Vault
+## V2.8: Motion-Forward Developer Marketplace & Resurrected Codebase Vault
 
 > **Where dead code gets resurrected.**  
 > A premium, editorial, motion-forward dark site for developers. Large confident typography, generous space, soft surfaces, cinematic scroll and hover motion, with developer cyberpunk identity in the telemetry details.
@@ -196,7 +196,11 @@ NEXT_PUBLIC_DEMO_MODE=true
 
 ### 3. Run Database Migrations
 
-Run migrations in order in your Supabase SQL Editor:
+For detailed instructions, see [supabase/README.md](file:///d:/the-graveyard/supabase/README.md).
+
+**Option A (Fastest):** Run `supabase/RUN_IN_SUPABASE_SQL_EDITOR.sql` in your Supabase SQL Editor. This one-click script applies all tables, RLS security policies, storage buckets, and functions.
+
+**Option B (Sequential Migrations):** Run migrations in order:
 1. 📄 `supabase/migrations/20261001000000_graveyard_v2.sql` (Security, RLS, transactions, paise pricing)
 2. 📄 `supabase/migrations/20261001010000_graveyard_v3_tombstones.sql` (Tombstone fields, feed RPC with synchronized counts)
 3. 📄 `supabase/migrations/20261001020000_graveyard_v4_details.sql` (v2.2 project details: features, todo_items, setup_notes, file_tree, collab_roles, screenshots, completion_percent, lines_of_code, is_featured, featured_rank, seed_key, and storage policies)
@@ -433,4 +437,22 @@ The Console (`/dashboard`) provides a calm, productive workspace for developers 
    - Archives all user listings (`is_archived = true`).
    - Preserves historical purchase transactions so previous buyers retain download access.
    - Permanently disables authentication via Supabase Admin API ban duration (`876000h`).
+
+5. **Brand Skull Favicon:**
+   - Vector favicon (`/icon.svg`) and desktop icon (`/favicon.ico`) directly render the transparent brand red skull mark (`#ff2a2a`, stroke width 2).
+
+---
+
+## 📚 Complete Documentation Suite
+
+| Document | Path | Purpose |
+|---|---|---|
+| **Product Requirements (PRD)** | [docs/prd.md](file:///d:/the-graveyard/docs/prd.md) | Business problem, interaction models, functional specs, roadmap |
+| **Design System & UI Spec** | [docs/design.md](file:///d:/the-graveyard/docs/design.md) | Typography, color tokens, micro-interactions, components |
+| **System Architecture** | [docs/architecture.md](file:///d:/the-graveyard/docs/architecture.md) | Database ERD, RLS matrix, API flows, edge cron jobs |
+| **Manual QA Checklist** | [docs/MANUAL_QA.md](file:///d:/the-graveyard/docs/MANUAL_QA.md) | Comprehensive 9-section verification suite including v2.8 console |
+| **Responsive QA Matrix** | [docs/RESPONSIVE_QA.md](file:///d:/the-graveyard/docs/RESPONSIVE_QA.md) | Device viewports, landscape phones, safe area insets |
+| **Database & Migrations Guide** | [supabase/README.md](file:///d:/the-graveyard/supabase/README.md) | One-click setup SQL, migration files, storage bucket rules |
+| **Scripts & Seeding Guide** | [scripts/README.md](file:///d:/the-graveyard/scripts/README.md) | 24-project seed harness, icon generators, collaborator test |
+
 
