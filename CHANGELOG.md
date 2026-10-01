@@ -47,6 +47,13 @@ To get the full system running locally with seeded data, execute commands in thi
    - **Home route only:** Intro is triggered only on full document load of `/` (`INTRO_ENABLED_ROUTES = ['/']`). Direct entry to other routes marks the session as seen and suppresses the intro.
    - **Skull assembled from 6 vertical slices:** The vector skull is clipped into 6 equal-width `<clipPath>` segments and assembled with alternating vertical offsets (±24px to ±60px) and a 70ms center-outward stagger.
    - **Green eye ignition:** Skull color transitions from dim grey to white, then ignites into brand red (`#ff2a2a`) while the eye sockets and nasal cavity flash neon green (`#39ff14`) with a pre-rendered radial glow aura before executing a FLIP flight to the navbar logo.
+7. **v2.4 Auth & Sign-in Redesign Assumptions:**
+   - **Split viewport layout:** Desktop (≥ 1024px) uses an unboxed 46% / 54% split layout with `min-h-dvh` and vertical/horizontal centering for the form container (`max-w-[420px]`). Collapses into a compact top band on screens < 1024px, ensuring complete responsiveness down to 320px and short landscape phones without form clipping.
+   - **Zero fake telemetry:** Purged old jargon (`MISSION BRIEF`, `TERMINAL AUTH`, `PROTOCOL //`, `AES-256`, `AUTH_STATUS`, `Surface Feed`, `operative vault`). Bottom row displays authentic live database counters (`get_marketplace_stats()`) and Supabase Auth status.
+   - **Open-redirect safety:** `getSafeNext` enforces relative same-origin paths beginning with `/`, rejecting protocol-relative (`//`), backslashes (`/\`), schemes, and URL-encoded slashes. Action intents are whitelisted to `buy`, `claim`, `apply`, and `message` (with `adopt` normalized to `claim`).
+   - **Enumeration-safe errors:** Auth failures map to generic messages ("Email or password is incorrect", "Too many attempts. Try again in a few minutes") preventing email enumeration.
+   - **Password meter & Caps Lock:** 4-segment visual meter with text labels ("Weak", "Okay", "Strong") and dynamic `getModifierState('CapsLock')` indicator.
+   - **Companion pages:** Reused `AuthShell` across `/login`, `/forgot-password`, `/reset-password`, `/auth/check-email`, and `/onboarding` for cohesive design tokens.
 
 ---
 
@@ -585,6 +592,235 @@ To deploy and verify v2.2 additions:
 - `src/lib/intro.ts`
 - `src/components/brand/SkullMark.tsx`
 - `src/components/intro/IntroOverlay.tsx`
+
+---
+
+## 5. V2.4: Sign in / Create Account Redesign & Unified Auth Suite
+
+### Workstream A: Unified Auth Shell (`src/components/auth/AuthShell.tsx`)
+- Unboxed split-screen viewport layout for desktop (≥ 1024px): 46% left brand panel, 54% right form panel, both spanning `min-h-dvh` and starting at the top of the viewport.
+- Mobile/tablet responsiveness (< 1024px): Collapses into a compact top band with skull mark, wordmark, and ghost back link. Scrollable form container with `min-h-dvh` prevents clipping on short screens and 200% zoom.
+- Brand Panel Aesthetics: Soft red ambient radial gradient, faint dotted grid, cropped low-opacity background skull, dynamic headline with Instrument Serif Italic accent word ("*second life*" / "*graveyard*"), 3-item feature list with Lucide icons in soft circles, and live database resurrected count (`get_marketplace_stats()`).
+- Stripped all pseudo-cryptographic fake telemetry (`MISSION BRIEF`, `TERMINAL AUTH`, `PROTOCOL //`, `AES-256`, `AUTH_STATUS`, `Surface Feed`, `operative vault`).
+
+### Workstream B: Form Behavior, Accessibility & Security (`src/app/login/page.tsx`)
+- Form validation via `react-hook-form` + `zodResolver`:
+  - Sign-in: Valid email, password min 1.
+  - Sign-up: Valid email, password min 8 with interactive 4-segment `PasswordStrengthMeter` ("Weak", "Okay", "Strong").
+- Accessible keyboard navigation: `role="tablist"` / `role="tab"` with arrow key navigation, Framer Motion sliding pill (`layoutId="auth-tab-pill"`), and URL synchronization (`?mode=signin|signup`) without scroll jumps.
+- Auto-focus first invalid field on failed submit; dynamic Caps Lock warning indicator (`getModifierState('CapsLock')`); show/hide password toggle button with `aria-pressed`.
+- Account enumeration protection: Generic error messaging mapping Supabase errors to friendly alerts.
+- Check-email verification view: Replaces the form on sign-up with email address, 30s resend cooldown timer, and switch email option.
+- Magic link passwordless OTP sign-in option.
+- Overrode `-webkit-autofill` dark styling in `src/index.css`.
+
+### Workstream C: OAuth & Redirect Hardening (`src/lib/safe-redirect.ts`)
+- `getSafeNext()` utility enforcing relative same-origin paths starting with `/`. Strictly rejects protocol-relative (`//`), backslashes (`/\`), schemes, and URL-encoded slashes, falling back to `/dashboard`.
+- Whitelisted action intents: `buy`, `claim`, `apply`, `message` (with `adopt` normalized to `claim`).
+- Hardened `/auth/callback`: Handles `error` and `error_description` params, routes first-time users to `/onboarding`, stores GitHub usernames in profiles, and seamlessly redirects returning users to `safeNext` + `safeIntent`.
+
+### Workstream D: Companion Pages
+- `src/app/forgot-password/page.tsx`: Generic success message preventing email enumeration, 30s resend cooldown timer, desktop auto-focus.
+- `src/app/reset-password/page.tsx`: Session verification, expired recovery link fallback with request link CTA, password match validation, `PasswordStrengthMeter`.
+- `src/app/auth/check-email/page.tsx`: Deep-link standalone verification screen with resend option.
+- `src/app/onboarding/page.tsx`: 400ms debounced live username uniqueness check against `profiles` table, avatar picker, bio, and post-onboarding redirect preservation.
+
+### Workstream E: Demo Mode Sandbox (`src/components/auth/DemoModeGroup.tsx`)
+- Conditionally rendered when `NEXT_PUBLIC_DEMO_MODE=true`.
+- Provides 1-click sandbox access for "demo buyer" and "demo seller" accounts without manual credential entry.
+
+### New Files Created in v2.4:
+- `src/lib/safe-redirect.ts`
+- `src/components/auth/AuthShell.tsx`
+- `src/components/auth/PasswordStrengthMeter.tsx`
+- `src/components/auth/DemoModeGroup.tsx`
+- `src/app/forgot-password/page.tsx`
+- `src/app/reset-password/page.tsx`
+- `src/app/auth/check-email/page.tsx`
+- `src/app/onboarding/page.tsx`
+
+---
+
+## 13. v2.5 Responsive, Fluid Layout & Cross-Device System
+
+### Assumptions
+1. **Adaptive vs. Degraded Experiences**: No features or filters are removed on smaller viewports; instead, elements reflow dynamically into bottom sheets, horizontal scroll carousels, or stacked card presentations.
+2. **Container Queries**: Standardized on `@tailwindcss/container-queries`. Cards and bento grid elements adapt to their individual container widths (`@container`), enabling consistent visual hierarchy regardless of grid column placement.
+3. **Safe Area Insets**: Implemented standard WebKit safe-area environment variables (`env(safe-area-inset-*)`) via custom utilities (`safe-pt`, `safe-pb`, `safe-pl`, `safe-pr`, `safe-p`) to prevent UI elements from overlapping home indicators, notches, and status bars.
+4. **Mobile Sheet Triggering**: Form dialogs and selection drawers automatically convert to native-feeling bottom sheets below the `sm` (640px) breakpoint, locking background scrolling via body styles.
+5. **Touch Targets & Form Sizing**: Enforced 44×44px minimum touch targets on coarse pointer devices (`@media (pointer: coarse)`) and set all form inputs to a minimum 16px (`text-base sm:text-sm`) on mobile to prevent iOS Safari auto-zooming.
+6. **Large Screen Ceilings**: Content max-width expands cleanly (1280px up to `2xl`, 1440px at `3xl`, 1600px at `4xl`+) while hero typography and line-lengths (`68ch`) enforce strict ceilings so content never stretches across ultrawide monitors.
+
+### Workstream Breakdown
+
+#### Workstream A: Foundations
+- Installed `@tailwindcss/container-queries` plugin.
+- Added custom breakpoints in `tailwind.config.ts`: `xs` (380px), `3xl` (1920px), `4xl` (2560px).
+- Set Next.js `Viewport` export in `src/app/layout.tsx` (`viewportFit: 'cover'`, `colorScheme: 'dark'`, `themeColor: '#0a0a0b'`).
+- Applied `scrollbar-gutter: stable; -webkit-text-size-adjust: 100%;` and slim custom scrollbar styling in `src/index.css`.
+- Replaced all viewport heights with dynamic viewport units (`100dvh`, `min-h-dvh`, `svh`).
+- Added safe-area padding utilities and `#app-root` with `overflow-x-clip`.
+- Enforced `en-IN` localized formatting in `src/lib/format.ts` (`formatINR`).
+
+#### Workstream B: Global Components
+- **Header (`src/components/Header.tsx`)**: Responsive collapse below `lg` (1024px) or under 200% zoom into mobile full-screen slide-down menu; compact 52px height on landscape phones; username truncation; safe area padding.
+- **Footer (`src/components/Footer.tsx`)**: Stacking link columns (`1 col` on `<380px`, `2 cols` on `xs`, `3 cols` on `sm+`); fluid SVG wordmark scaling (`clamp(2rem, 11.5vw, 11.5rem)`); link to `/design-system/responsive`.
+- **Modals & Dialogs**:
+  - `PaymentModal.tsx`: Transforms into full-height/auto bottom sheet with grab handle, `max-h-[92dvh]`, sticky buttons, and body scroll lock.
+  - `CollabRequestModal.tsx`: Bottom sheet transformation on mobile with sticky apply button.
+  - `ConfirmDialog.tsx`: Responsive bottom sheet on `< sm`, modal on `sm+`.
+  - `NotificationBell.tsx`: Full-screen bottom sheet on mobile, anchored popover on `sm+`.
+- **Cards & Footers**:
+  - `CardFooter.tsx`: Enforced zero overflow; seller username truncates first while price and button remain locked on a single line.
+  - `ProjectCard.tsx`: `@container` query integration; `break-anywhere` on titles; `min-w-0` on flex items.
+
+#### Workstream C: Page-by-Page Adaptation
+- **Home (`/`)**:
+  - Hero `min-h-[min(88svh,900px)]` and auto-height on short landscape phones (`max-height: 500px`).
+  - Fluid 5-metric stats row (2 cols mobile, 3 cols tablet, 5 cols desktop).
+  - Pauses marquee on `prefers-reduced-motion: reduce`.
+  - How It Works switches to non-sticky list on mobile/short heights.
+  - Featured Bento: Fixed bento row on `≥ lg`, 2 cols on `md`, 1 col on `< md`; compact cards switch vertical under 420px.
+  - Marketplace grid: `repeat(auto-fill, minmax(clamp(260px, 22vw, 340px), 1fr))`.
+  - Sticky FilterBar: compact search + filters sheet button on mobile; horizontally scrollable segmented control for modes.
+  - Resurrected Wall: Swipe, CSS scroll-snap, arrow navigation, keyboard controls.
+- **Project Detail (`/project/[id]`)**:
+  - 2-column layout on `≥ lg` with sticky right action panel.
+  - Single-column on `< lg` with pinned sticky bottom action bar and body content checklist.
+  - Lightbox with touch swipe support.
+  - Code blocks and file trees with internal horizontal scroll (`overflow-x-auto`).
+- **Submit Wizard (`/submit`)**:
+  - Compact stepper below `md` ("Step X of Y" + progress bar).
+  - Sticky bottom action bar with safe-area padding.
+- **Dashboard (`/dashboard`)**:
+  - Sidebar on `≥ lg`, 5-item mobile bottom tab bar with "More" drawer sheet on `< lg`.
+  - Tables convert to structured stacked cards on `< md`.
+- **Messages (`src/components/ChatInterface.tsx`)**:
+  - Split two-pane on `≥ lg`.
+  - Single-pane thread list with full-screen conversation view and back button on `< lg`.
+  - Sticky keyboard-aware composer (`visualViewport`) and anchored scroll.
+- **Intro Overlay (`src/components/intro/IntroOverlay.tsx`)**:
+  - `100dvh`, safe areas, vector skull `clamp(140px, 18vmin, 240px)`.
+  - FLIP flight target verification with graceful fallback fade if navbar logo is moved or hidden.
+
+#### Workstream D: Large Screens (1920 → 4K, Ultrawide)
+- Constrained max-width container (1440px at `3xl`, 1600px at `4xl`+).
+- Reading measure bounded to `68ch`.
+- Generative `CoverArt` rendered purely via vector SVG and CSS gradients for resolution-independent clarity.
+
+#### Workstream E: Accessibility, Zoom & High Contrast
+- Verified at 200% browser zoom and text zoom.
+- Full `prefers-contrast: more` and `forced-colors: active` theme support.
+- Gated hover effects inside `@media (hover: hover) and (pointer: fine)`.
+- 44×44px minimum touch targets on coarse pointer devices.
+
+#### Workstream F: Developer Tools
+- `src/components/dev/ViewportBadge.tsx`: Dimension badge with breakpoint, DPR, and tier indicator (toggle via `Ctrl+Shift+D` or `?debug=viewport`).
+- `src/app/design-system/responsive/page.tsx`: In-browser responsive device frame simulator supporting 13 presets, rotation, fit-scaling, and route loading with same-origin framing (`SAMEORIGIN`).
+
+#### Workstream G: Documentation
+- Created `docs/RESPONSIVE_QA.md` with complete 17-viewport QA checklist and per-page verification criteria.
+- Updated `README.md` with Responsive Design section.
+- Appended `CHANGELOG.md` with v2.5 release log and assumptions.
+
+---
+
+## 8. v2.6 Release Log: Launch Readiness (SEO, Social Previews, Favicons, Legal, Analytics & Image Compression)
+
+### Assumptions Made
+1. **Metadata & Open Graph**:
+   - `NEXT_PUBLIC_SITE_URL` provides the absolute origin URL for canonical links, sitemaps, robots, and Open Graph card generators. If unset or missing, it safely falls back to `http://localhost:3000` with a build-time console warning.
+   - For `ImageResponse` social cards (`opengraph-image.tsx` and `projects/[id]/opengraph-image.tsx`), standard sans-serif system font fallbacks are used with strict dimensions (1200×630) and truncation rules to prevent text overflow.
+2. **Social Previews & Route Compatibility**:
+   - Both `/project/[id]` and `/projects/[id]` export `opengraph-image.tsx` and `twitter-image.tsx` dynamically so social bot unfurling works identically across both URL conventions.
+3. **Alt Text Enforcement**:
+   - `src/components/ui/Img.tsx` enforces TypeScript compilation errors unless an `alt` string is provided or `decorative: true` is explicitly declared. `eslint-plugin-jsx-a11y/alt-text` is enabled as an error in `eslint.config.mjs`.
+4. **Zero PII Analytics Policy**:
+   - Cookieless analytics (`@vercel/analytics` and `@vercel/speed-insights`) are loaded in production only and respect Do Not Track (`navigator.doNotTrack === '1'`), Global Privacy Control (`navigator.globalPrivacyControl`), and local storage opt-out (`graveyard:analytics:optout`). No usernames, emails, search terms, or freeform text are tracked.
+5. **Security Headers**:
+   - `Content-Security-Policy-Report-Only` is enabled in production only, allowing Razorpay scripts and frames, Supabase APIs and websockets, and Vercel analytics while leaving room for tightening before switching to enforcing mode.
+6. **Confirmation Pages & Authorizations**:
+   - `/orders/[transactionId]`, `/submit/success`, and `/collab/sent` are authenticated, server-verified, and marked `noindex, nofollow`.
+
+### Workstreams Completed
+- **Workstream A: Metadata, Canonicals, Robots Meta, Structured Data**:
+  - Configured `%s · The Graveyard` title template, `<html lang="en-IN">`, canonical URLs, JSON-LD (`WebSite` with SearchAction + `Organization`), and `robots: { index: false }` across all private and auth routes.
+- **Workstream B: Open Graph & Twitter Social Cards**:
+  - Implemented 1200×630 default card (`src/app/opengraph-image.tsx`) with dark radial gradient and red skull mark, plus dynamic per-project cards showing mode badge, price/terms, tagline, tombstone line, and seller handle.
+- **Workstream C: Favicon Set & Web Manifest**:
+  - Generated full favicon suite from vector skull: `icon.svg`, `apple-icon.png` (180×180), multi-size `favicon.ico` (16/32/48), `icon-192.png`, `icon-512.png`, and `icon-maskable-512.png`. Created `src/app/manifest.ts`.
+- **Workstream D: Robots.txt & Dynamic Sitemap**:
+  - `src/app/robots.ts` allows indexable public routes and disallows private directories. `src/app/sitemap.ts` queries live projects with anon client, assigns priority tiers, and caches for 1 hour.
+- **Workstream E: Alt Text Wrapper & Audit**:
+  - Created `src/components/ui/Img.tsx`, audited all image components (`ProjectCard`, `CoverImage`, `Avatar`, `ScreenshotGallery`, `ResurrectedWall`, `FeaturedResurrections`), and enabled `jsx-a11y/alt-text` as an error.
+- **Workstream F: Thank-You & Order Confirmation Pages**:
+  - Built `/orders/[transactionId]` with TEST MODE pill, delivery card, GitHub invite status, next steps, and receipt print styles. Built `/submit/success` with share intents and card preview. Built `/collab/sent` confirmation page.
+- **Workstream G: Cookieless Analytics & Minimal Consent Notice**:
+  - Installed `@vercel/analytics` and `@vercel/speed-insights`. Implemented `src/lib/analytics.ts` typed event tracker. Built non-blocking `ConsentNotice.tsx` with 12-month persistent preference and cookie settings modal.
+- **Workstream H: Legal Rewrite (Terms & Privacy)**:
+  - Rewrote `/privacy` and `/terms` with portfolio demonstration notices, tables of contents, 68ch reading measures, print stylesheets, and authentic technical descriptions without false claims.
+- **Workstream I: Contact Page & Grouped Footer**:
+  - Built `/contact` with mailto copy, GitHub issues link, and prefilled takedown intent. Updated `Footer.tsx` with Product, Company, and Legal groups, including Cookie Settings trigger.
+- **Workstream J: Image Compression Pipeline**:
+  - Built client-side compression pipeline (`src/lib/image-compression.ts`) targeting ≤300KB WebP images at max 1600px dimension. Added cache-busting storage paths. Updated Next.js image optimization configuration with AVIF/WebP formats.
+- **Workstream K: Security Headers**:
+  - Added `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`, `Permissions-Policy`, and production `Content-Security-Policy-Report-Only`.
+- **Workstream L: Accessibility & Document Fixes**:
+  - Implemented focusable "Skip to main content" pill targeting `<main id="main" tabIndex={-1}>`, verified single `<h1>` hierarchy, and added async `loading.tsx` states.
+- **Workstream M: Above-the-fold CTA Audit & Form Error Polish**:
+  - Audited visible primary CTAs across key viewports. Redesigned `not-found.tsx` with search input and dual CTAs. Unified accessible error states with `aria-live` and `role="alert"`.
+- **Workstream N: Documentation & Static Quality Verification**:
+  - Updated `.env.example`, `README.md`, `CHANGELOG.md`, and `docs/MANUAL_QA.md`.
+
+---
+
+## 9. v2.7 Release Log: Bring Hero Background Motion to Mobile (Safely)
+
+### Assumptions Made
+1. **Tier & Policy Logic**:
+   - A coarse pointer or viewport < 768px no longer forces `low` tier. Devices with touch/coarse pointers or <= 4 CPU cores / <= 4GB RAM evaluate to `mid` tier, which enables the lightweight mobile canvas.
+   - Devices with <= 2 CPU cores or <= 2GB RAM, `connection.saveData`, or battery saver (< 20% unplugged) evaluate to `low` tier, routing to the pure CSS fallback.
+   - The FPS governor benchmark may upgrade `mid` → `high` only on desktop (fine pointer) devices, never on touch devices.
+2. **Hero FX Mode Resolver (`getHeroFxMode()`)**:
+   - `getHeroFxMode()` is the single source of truth for hero motion across `SoulsCanvas`, `HeroFxCss`, `ViewportBadge`, and the design system.
+   - Reduced motion (`prefers-reduced-motion: reduce`) always enforces `'static'` and cannot be bypassed.
+   - Manual override is supported via URL parameter `?fx=canvas|css|static` and `NEXT_PUBLIC_HERO_FX` env variable for instant testing and share card previews.
+   - Self-protection frame governor automatically downgrades mobile canvas to `css` mode if median frame delta exceeds ~42ms over the first 2 seconds, persisted in `sessionStorage`.
+3. **Canvas Resolution & Debounced Resizing**:
+   - Mobile canvas runs at logical resolution DPR 1.0 with a 24fps cap to save battery and GPU cycles.
+   - Resizing only occurs when width changes or height changes by more than 120px (debounced 150ms), preventing browser address bar collapses/expansions during scroll from triggering canvas re-allocations.
+4. **Dynamic Geometry-Based Legibility Mask**:
+   - Replaced fixed elliptical mask with a dynamic signed-distance field (SDF) computed from all elements marked with `[data-hero-text]` (status pill, headline, subline, CTAs, scroll indicator).
+   - Rectangles are expanded by 16px (mobile) / 28px (desktop) and cached via `ResizeObserver` and font readiness. Particle opacity drops to 0 inside text bounds and smoothly fades in over 56px outside.
+5. **Mobile Text Polish**:
+   - Prevented awkward word wrapping of "co-founder" by applying non-breaking hyphen `co&#8209;founder` (U+2011) wrapped in `whitespace-nowrap`, with `[text-wrap:pretty]` and `hyphens-manual` on the hero subline.
+
+### Workstreams Completed
+- **Workstream A: Tier and Policy Changes (`src/lib/perf.ts`)**:
+   - Updated `getInitialPerfTier()` so coarse pointers default to `mid` rather than `low`.
+   - Updated FPS governor benchmark with desktop-only upgrades.
+   - Added `getHeroFxMode()`, battery status listener (`initBatteryMonitoring`), and session override handling.
+   - Created `src/hooks/useHeroFxMode.ts` reactive hook.
+- **Workstream B: Mobile Canvas Mode (`src/components/hero/SoulsCanvas.tsx`)**:
+   - Built lightweight 20–26 particle mobile canvas mode capped at 24fps with DPR 1.0.
+   - Implemented passive touch ripple on touch events (`pointerType === 'touch'`) with `touch-action: pan-y`.
+   - Added scroll velocity vertical nudge calculated per frame without scroll event listeners.
+   - Added 2-second median frame time benchmark for self-protection fallback to `css`.
+- **Workstream C: CSS-Only Fallback Layer (`src/components/hero/HeroFxCss.tsx`)**:
+   - Pure CSS fallback using hardware-accelerated transforms and opacity only (`will-change: transform`).
+   - Ambient red glow drift (18s) + 10 floating monospace glyph spans positioned in perimeter safe zones.
+   - Automatically pauses animations when offscreen via `IntersectionObserver`.
+- **Workstream D: Dynamic Legibility Mask**:
+   - Box SDF calculation relative to hero container cached on resize and font load.
+   - Smoothstep alpha modulation ensuring zero particle clutter over text.
+- **Workstream E: Mobile Hero Text Polish & Dev Badge**:
+   - Protected "co-founder" in hero subline; updated hero layers to `pointer-events: none` and `z-0`.
+   - Updated `ViewportBadge.tsx` to display active hero FX mode alongside viewport metrics.
+   - Added Hero FX switcher and live interactive sandbox preview to `/design-system` page.
+- **Workstream F: Documentation & Verification**:
+   - Updated `.env.example`, `README.md`, `CHANGELOG.md`, and `docs/MANUAL_QA.md`.
+
+
 
 
 

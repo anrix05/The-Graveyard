@@ -22,7 +22,26 @@ export const Stepper: React.FC<StepperProps> = ({
 }) => {
   return (
     <nav aria-label="Progress" className={cn('w-full', className)}>
-      <ol className="flex items-center justify-between gap-2 sm:gap-4 relative">
+      {/* Mobile compact stepper below md */}
+      <div className="md:hidden flex flex-col gap-2 w-full">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <span className="text-white font-semibold">
+            Step {currentStep} of {steps.length}
+          </span>
+          <span className="text-muted truncate max-w-[180px]">
+            {steps.find((s) => s.id === currentStep)?.label}
+          </span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-surface-2 overflow-hidden border border-line">
+          <div
+            className="h-full bg-white transition-all duration-300 rounded-full"
+            style={{ width: `${(currentStep / steps.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Desktop standard stepper (>= md) */}
+      <ol className="hidden md:flex items-center justify-between gap-2 sm:gap-4 relative">
         {steps.map((step, idx) => {
           const isCompleted = step.id < currentStep;
           const isCurrent = step.id === currentStep;
@@ -50,7 +69,7 @@ export const Stepper: React.FC<StepperProps> = ({
                 </div>
                 <span
                   className={cn(
-                    'font-sans text-xs sm:text-sm font-medium tracking-normal hidden md:inline-block transition-colors',
+                    'font-sans text-xs sm:text-sm font-medium tracking-normal transition-colors',
                     isCurrent ? 'text-white' : 'text-muted'
                   )}
                 >

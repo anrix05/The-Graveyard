@@ -115,9 +115,9 @@ export const Header: React.FC = () => {
       <header
         className={cn(
           'fixed top-0 left-0 right-0 z-header w-full transition-colors duration-200 select-none',
-          'h-[60px] md:h-[68px] flex items-center',
+          'h-[60px] lg:h-[68px] landscape-compact-nav flex items-center pt-[env(safe-area-inset-top,0px)]',
           isScrolled
-            ? 'bg-[#0a0a0b]/90 border-b border-line shadow-lg'
+            ? 'bg-[#0a0a0b]/90 border-b border-line shadow-lg backdrop-blur-md'
             : 'bg-transparent border-b border-transparent'
         )}
       >
@@ -136,9 +136,9 @@ export const Header: React.FC = () => {
             </span>
           </Link>
 
-          {/* Center: Sliding Pill Nav Track */}
+          {/* Center: Sliding Pill Nav Track (Collapses below lg and at 200% zoom) */}
           <nav
-            className="hidden md:flex items-center p-1 rounded-full bg-white/[0.04] border border-line"
+            className="hidden lg:flex items-center p-1 rounded-full bg-white/[0.04] border border-line"
             onMouseLeave={() => setHoveredLink(null)}
           >
             {navLinks.map((link) => {
@@ -152,7 +152,7 @@ export const Header: React.FC = () => {
                   onMouseEnter={() => setHoveredLink(link.href)}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'relative px-5 py-1.5 rounded-full font-sans text-[15px] font-medium transition-colors z-10',
+                    'relative px-3.5 py-1 xl:px-5 xl:py-1.5 rounded-full font-sans text-[15px] font-medium transition-colors z-10',
                     isActive ? 'text-white' : 'text-muted hover:text-fg'
                   )}
                 >
@@ -170,9 +170,9 @@ export const Header: React.FC = () => {
           </nav>
 
           {/* Right: Auth State & Actions */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {user ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <NotificationBell />
 
                 {/* User Dropdown */}
@@ -183,7 +183,7 @@ export const Header: React.FC = () => {
                     className="h-10 flex items-center gap-2 rounded-full px-2 py-1 border border-line bg-surface-2 hover:border-white/20 transition-colors"
                   >
                     <Avatar username={user.username || 'operative'} size="sm" />
-                    <span className="hidden sm:inline font-mono text-xs text-fg px-1">
+                    <span className="hidden sm:inline font-mono text-xs text-fg px-1 max-w-[120px] truncate">
                       @{user.username || 'operative'}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-muted mr-1" />
@@ -261,7 +261,7 @@ export const Header: React.FC = () => {
                 >
                   Sign in
                 </Link>
-                <Link href="/login?intent=signup">
+                <Link href="/login?mode=signup">
                   <Button variant="primary" mode="brand" size="sm">
                     Get started
                   </Button>
@@ -269,11 +269,11 @@ export const Header: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile Hamburger Toggle Button */}
+            {/* Mobile Hamburger Toggle Button (Shows on < lg and at 200% zoom) */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden h-10 w-10 flex items-center justify-center rounded-full border border-line text-muted hover:text-white transition-colors"
+              className="lg:hidden h-10 w-10 flex items-center justify-center rounded-full border border-line text-muted hover:text-white transition-colors"
               aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={isMobileMenuOpen}
             >
@@ -283,7 +283,7 @@ export const Header: React.FC = () => {
         </div>
       </header>
 
-      {/* Full-screen Solid Mobile Menu (No blur, high-contrast, locked scroll) */}
+      {/* Full-screen Solid Mobile Menu (No blur, high-contrast, locked scroll, safe areas) */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
@@ -292,7 +292,7 @@ export const Header: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.16 }}
-            className="fixed inset-0 top-[60px] z-modal bg-[#0a0a0b] text-white flex flex-col justify-between px-6 py-8 md:hidden"
+            className="fixed inset-0 top-[60px] lg:top-[68px] z-modal bg-[#0a0a0b] text-white flex flex-col justify-between px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom,0px))] overflow-y-auto min-h-[calc(100dvh-60px)] lg:hidden"
           >
             <nav className="flex flex-col gap-6 pt-4">
               {navLinks.map((link, idx) => (
@@ -321,7 +321,7 @@ export const Header: React.FC = () => {
                       Sign in
                     </Button>
                   </Link>
-                  <Link href="/login?intent=signup" onClick={() => setIsMobileMenuOpen(false)} className="block">
+                  <Link href="/login?mode=signup" onClick={() => setIsMobileMenuOpen(false)} className="block">
                     <Button variant="primary" mode="brand" size="md" fullWidth>
                       Get started
                     </Button>

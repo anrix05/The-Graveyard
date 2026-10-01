@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ModeBadge } from '@/components/ui/badge';
 import TechBadge from '@/components/TechBadge';
+import { compressImage } from '@/lib/image-compression';
 import { CANONICAL_TECHS, Project, CauseOfDeath, CAUSE_OF_DEATH_LABELS } from '@/types/project';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -105,15 +106,23 @@ export default function EditProjectPage() {
     }
   };
 
-  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Cover must be under 2MB.');
-      return;
+    const toastId = toast.loading('Optimizing cover image...');
+    try {
+      const result = await compressImage(file, {
+        maxDimension: 1600,
+        maxSizeBytes: 300 * 1024,
+      });
+      toast.success(`Optimized ${result.savingsText}`, { id: toastId });
+      setCoverFile(result.file);
+      setCoverPreview(URL.createObjectURL(result.file));
+    } catch {
+      toast.dismiss(toastId);
+      setCoverFile(file);
+      setCoverPreview(URL.createObjectURL(file));
     }
-    setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -132,8 +141,9 @@ export default function EditProjectPage() {
       let finalCoverUrl = project.cover_url;
 
       if (coverFile) {
-        const coverExt = coverFile.name.split('.').pop() || 'png';
-        const coverPath = `${user.id}/${Date.now()}_cover.${coverExt}`;
+        const coverExt = coverFile.name.split('.').pop() || 'webp';
+        const hash = Math.random().toString(36).substring(2, 8);
+        const coverPath = `${user.id}/${Date.now()}_${hash}_cover.${coverExt}`;
         const { error: uploadErr } = await supabase.storage
           .from('project-covers')
           .upload(coverPath, coverFile, { upsert: true });
@@ -194,7 +204,7 @@ export default function EditProjectPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-bg text-white flex flex-col">
+      <div className="min-h-dvh bg-bg text-white flex flex-col">
         <Header />
         <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-16 font-mono text-xs text-muted text-center">
           Loading codebase parameters...
@@ -205,7 +215,7 @@ export default function EditProjectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-white flex flex-col">
+    <div className="min-h-dvh bg-bg text-white flex flex-col">
       <Header />
 
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10">
@@ -309,7 +319,7 @@ export default function EditProjectPage() {
               <div className="flex gap-4 items-center">
                 {coverPreview && (
                   <div className="w-24 h-16 rounded-lg overflow-hidden border border-line shrink-0">
-                    <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
+                    <img src={coverPreview} alt={`${title || 'Project'} cover image preview`} className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className="relative border border-line bg-surface-2 p-3 rounded-input cursor-pointer flex-1">

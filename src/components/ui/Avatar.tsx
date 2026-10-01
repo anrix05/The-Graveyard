@@ -1,13 +1,14 @@
 import React from 'react';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { cn } from '@/lib/utils';
 
-interface AvatarProps {
+export interface AvatarProps {
   src?: string | null;
   username?: string | null;
   size?: 'sm' | 'md' | 'lg' | 'xl' | number;
   className?: string;
   showFullUsername?: boolean;
+  standalone?: boolean;
 }
 
 // Generate deterministic gradient from username
@@ -35,6 +36,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   username,
   size = 'md',
   className,
+  standalone = false,
 }) => {
   const [error, setError] = React.useState(false);
 
@@ -64,21 +66,34 @@ export const Avatar: React.FC<AvatarProps> = ({
       )}
     >
       {src && !error ? (
-        <Image
-          src={src}
-          alt={name}
-          fill
-          sizes="56px"
-          className="object-cover"
-          onError={() => setError(true)}
-          unoptimized={src.startsWith('data:') || src.includes('dicebear')}
-        />
+        standalone ? (
+          <Img
+            src={src}
+            alt={`${name}'s avatar`}
+            fill
+            sizes="56px"
+            className="object-cover"
+            onError={() => setError(true)}
+            unoptimized={src.startsWith('data:') || src.includes('dicebear')}
+          />
+        ) : (
+          <Img
+            src={src}
+            decorative
+            fill
+            sizes="56px"
+            className="object-cover"
+            onError={() => setError(true)}
+            unoptimized={src.startsWith('data:') || src.includes('dicebear')}
+          />
+        )
       ) : (
         <div
           className={cn(
             'w-full h-full flex items-center justify-center bg-gradient-to-br text-white font-mono',
             gradientClass
           )}
+          aria-hidden="true"
         >
           {initial}
         </div>

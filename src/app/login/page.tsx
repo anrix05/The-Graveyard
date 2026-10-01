@@ -1,506 +1,776 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import {
-  Skull,
-  Github,
-  Mail,
-  Lock,
   Eye,
   EyeOff,
-  ArrowRight,
-  ShieldCheck,
-  Sparkles,
-  Terminal,
-  User,
+  AlertCircle,
   AlertTriangle,
+  CheckCircle2,
+  Mail,
+  Loader2,
+  X,
+  Github,
 } from 'lucide-react';
-import Button from '@/components/ui/Button';
-import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
-import { useAuth } from '@/context/AuthContext';
+import AuthShell from '@/components/auth/AuthShell';
+import PasswordStrengthMeter from '@/components/auth/PasswordStrengthMeter';
+import DemoModeGroup from '@/components/auth/DemoModeGroup';
 import { supabase } from '@/lib/supabase';
+import { getSafeNext, getSafeIntent, buildPostAuthUrl } from '@/lib/safe-redirect';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+// Form Schemas
+const signInSchema = z.object({
+  email: z.string().trim().email({ message: 'Enter a valid email address.' }),
+  password: z.string().min(1, { message: 'Password is required.' }),
+});
+
+const signUpSchema = z.object({
+  email: z.string().trim().email({ message: 'Enter a valid email address.' }),
+  password: z.string().min(8, { message: 'Password must be at least 8 characters.' }),
+});
+
+type SignInValues = z.infer<typeof signInSchema>;
+type SignUpValues = z.infer<typeof signUpSchema>;
+
+function mapSupabaseAuthError(error: unknown): string {
+  if (!error) return 'An unexpected error occurred. Please try again.';
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : String(error);
+  const lower = msg.toLowerCase();
+
+  if (lower.includes('rate limit') || lower.includes('too many') || lower.includes('over_email_send_rate_limit')) {
+    return 'Too many attempts. Try again in a few minutes.';
+  }
+  if (lower.includes('network') || lower.includes('failed to fetch') || lower.includes('connection')) {
+    return "Can't reach the server. Check your connection and try again.";
+  }
+  if (
+    lower.includes('different provider') ||
+    lower.includes('already registered') ||
+    lower.includes('identity_already_exists')
+  ) {
+    return 'That email is already used with another sign-in method. Try GitHub or Google.';
+  }
+  if (
+    lower.includes('invalid login credentials') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('user not found') ||
+    lower.includes('wrong password')
+  ) {
+    return 'Email or password is incorrect.';
+  }
+  if (lower.includes('email not confirmed')) {
+    return 'Please confirm your email address before signing in.';
+  }
+  return 'Email or password is incorrect.';
+}
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, login, loginWithEmail } = useAuth();
 
-  const nextUrl = searchParams.get('next') || '/';
-  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+  const nextParam = searchParams.get('next');
+  const intentParam = searchParams.get('intent');
+  const modeParam = searchParams.get('mode');
+  const errorParam = searchParams.get('error');
 
+  const safeNext = getSafeNext(nextParam);
+  const safeIntent = getSafeIntent(intentParam);
+  const postAuthUrl = buildPostAuthUrl(safeNext, safeIntent);
+
+  // Tab State: default to signup if ?mode=signup or ?intent=signup
+  const initialMode = modeParam === 'signup' || intentParam === 'signup' ? 'signup' : 'signin';
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialMode);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  // Password visibility & Caps Lock
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
 
-  // Onboarding State
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [customUsername, setCustomUsername] = useState('');
-  const [bio, setBio] = useState('');
-  const [isOnboardingSaving, setIsOnboardingSaving] = useState(false);
+  // Form loading & feedback states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'github' | 'google' | null>(null);
+  const [magicLinkLoading, setMagicLinkLoading] = useState(false);
+  const [formAlert, setFormAlert] = useState<string | null>(null);
 
-  // Demo mode check
-  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  // Success states
+  const [signUpSuccessEmail, setSignUpSuccessEmail] = useState<string | null>(null);
+  const [magicLinkSentEmail, setMagicLinkSentEmail] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Rotating value propositions on left panel
-  const [valuePropIndex, setValuePropIndex] = useState(0);
-  const valueProps = [
-    { title: 'Liquid Code Assets', text: 'Resurrect abandoned MVPs, open-source boilerplates, and neglected prototypes.' },
-    { title: 'Automated Delivery', text: 'Instant GitHub collaborator invites & cryptographically signed archive downloads.' },
-    { title: 'Talent Alignment', text: 'Partner with ambitious builders and co-founders through structured pitches.' },
-  ];
+  // Active form setup
+  const currentSchema = authMode === 'signup' ? signUpSchema : signInSchema;
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    setFocus,
+    formState: { errors },
+  } = useForm<SignInValues | SignUpValues>({
+    resolver: zodResolver(currentSchema),
+    mode: 'onBlur',
+    defaultValues: { email: '', password: '' },
+  });
 
+  const emailValue = watch('email');
+  const passwordValue = watch('password') || '';
+
+  // Initial error from URL query
   useEffect(() => {
-    const timer = setInterval(() => {
-      setValuePropIndex((prev) => (prev + 1) % valueProps.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [valueProps.length]);
-
-  // Check if existing user needs onboarding (auto-generated username)
-  useEffect(() => {
-    if (user && user.username && user.username.includes('_') && user.username.length > 12) {
-      setCustomUsername(user.username.split('_')[0]);
-      setShowOnboarding(true);
-    } else if (user) {
-      router.push(nextUrl);
+    if (errorParam) {
+      if (errorParam === 'cancelled' || errorParam.includes('cancel')) {
+        setFormAlert('Sign-in was cancelled.');
+      } else {
+        setFormAlert(decodeURIComponent(errorParam));
+      }
     }
-  }, [user, nextUrl, router]);
+  }, [errorParam]);
 
-  const handleOAuthLogin = async (provider: 'github' | 'google') => {
-    setIsLoading(provider);
-    setErrorMessage(null);
-    try {
-      await login(provider);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'OAuth sign-in failed.';
-      setErrorMessage(msg);
-      toast.error(msg);
-      setIsLoading(null);
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
+  // Focus first invalid input on validation failure
+  const onInvalidSubmit = () => {
+    if (errors.email) {
+      setFocus('email');
+    } else if (errors.password) {
+      setFocus('password');
     }
   };
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setErrorMessage('Please provide both email and password.');
+  // Sync mode changes to URL without scroll jump
+  const handleModeChange = (newMode: 'signin' | 'signup') => {
+    if (newMode === authMode) return;
+    setAuthMode(newMode);
+    setFormAlert(null);
+    setShowPassword(false);
+    // Keep email, reset password and validation errors
+    const currentEmail = emailValue;
+    reset({ email: currentEmail, password: '' });
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('mode', newMode);
+    router.replace(`/login?${params.toString()}`, { scroll: false });
+  };
+
+  // Detect Caps Lock
+  const handlePasswordKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === 'function') {
+      setIsCapsLockOn(e.getModifierState('CapsLock'));
+    }
+  };
+
+  // OAuth Sign In
+  const handleOAuth = async (provider: 'github' | 'google') => {
+    setOauthLoading(provider);
+    setFormAlert(null);
+    try {
+      const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+        safeNext
+      )}${safeIntent ? `&intent=${safeIntent}` : ''}`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: redirectUrl,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+    } catch (err: unknown) {
+      const msg = mapSupabaseAuthError(err);
+      setFormAlert(msg);
+      toast.error(msg);
+      setOauthLoading(null);
+    }
+  };
+
+  // Magic Link Sign In
+  const handleMagicLink = async () => {
+    if (!emailValue || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim())) {
+      setFormAlert('Enter a valid email address to receive a sign-in link.');
+      setFocus('email');
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters.');
-      return;
-    }
+    setMagicLinkLoading(true);
+    setFormAlert(null);
+    try {
+      const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+        safeNext
+      )}${safeIntent ? `&intent=${safeIntent}` : ''}`;
 
-    setIsLoading('email');
-    setErrorMessage(null);
+      const { error } = await supabase.auth.signInWithOtp({
+        email: emailValue.trim(),
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
+      });
+
+      if (error) throw error;
+
+      setMagicLinkSentEmail(emailValue.trim());
+      setResendCooldown(30);
+    } catch (err: unknown) {
+      const msg = mapSupabaseAuthError(err);
+      setFormAlert(msg);
+      toast.error(msg);
+    } finally {
+      setMagicLinkLoading(false);
+    }
+  };
+
+  // Resend Verification Email
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0 || !signUpSuccessEmail) return;
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: signUpSuccessEmail,
+      });
+      if (error) throw error;
+      toast.success('Verification link resent.');
+      setResendCooldown(30);
+    } catch {
+      toast.error('Unable to resend at this moment. Try again shortly.');
+    }
+  };
+
+  // Main Email Form Submit
+  const onSubmit = async (values: SignInValues | SignUpValues) => {
+    setIsSubmitting(true);
+    setFormAlert(null);
 
     try {
       if (authMode === 'signin') {
-        const { error } = await loginWithEmail(email, password);
-        if (error) throw error;
-        toast.success('Welcome back, Operative.');
-        router.push(nextUrl);
-      } else {
-        // Sign up
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
+        const { error } = await supabase.auth.signInWithPassword({
+          email: values.email.trim(),
+          password: values.password,
         });
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
-        if (data?.user && !data.session) {
-          toast.info('Account created. Please check your email to verify your address.');
+        toast.success('Welcome back!');
+        router.push(postAuthUrl);
+      } else {
+        // Sign Up Flow
+        const { data, error } = await supabase.auth.signUp({
+          email: values.email.trim(),
+          password: values.password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+              safeNext
+            )}${safeIntent ? `&intent=${safeIntent}` : ''}`,
+          },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        // If email confirmation is disabled, user is immediately signed in
+        if (data.session) {
+          toast.success('Account created successfully!');
+          router.push(`/onboarding?next=${encodeURIComponent(safeNext)}${safeIntent ? `&intent=${safeIntent}` : ''}`);
         } else {
-          toast.success('Account created! Welcome to The Graveyard.');
-          setShowOnboarding(true);
+          // Confirmation required
+          setSignUpSuccessEmail(values.email.trim());
+          setResendCooldown(30);
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Authentication failed.';
-      setErrorMessage(msg);
-      toast.error(msg);
+      const friendlyMsg = mapSupabaseAuthError(err);
+      setFormAlert(friendlyMsg);
     } finally {
-      setIsLoading(null);
+      setIsSubmitting(false);
     }
   };
 
-  const handleDemoLogin = async (role: 'buyer' | 'seller') => {
-    setIsLoading(`demo_${role}`);
-    setErrorMessage(null);
+  const isBusy = isSubmitting || oauthLoading !== null || magicLinkLoading;
 
-    try {
-      const res = await fetch(`/api/demo-login?role=${role}`);
-      if (!res.ok) throw new Error('Demo login service unavailable.');
+  // =========================================================================
+  // STATE 1: CHECK YOUR EMAIL (SIGN-UP CONFIRMATION)
+  // =========================================================================
+  if (signUpSuccessEmail) {
+    return (
+      <div className="w-full text-center space-y-6 animate-fade-in" role="region" aria-label="Email Confirmation Required">
+        <div className="w-16 h-16 rounded-full bg-surface-2 border border-line flex items-center justify-center mx-auto text-emerald-400">
+          <Mail className="w-8 h-8" aria-hidden="true" />
+        </div>
 
-      const creds = await res.json();
-      setEmail(creds.email);
-      setPassword(creds.password);
+        <div className="space-y-2">
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+            Check your email
+          </h1>
+          <p className="font-sans text-sm text-muted max-w-sm mx-auto leading-relaxed">
+            We sent a verification link to{' '}
+            <span className="font-medium text-white">{signUpSuccessEmail}</span>. Click the link to complete your registration.
+          </p>
+        </div>
 
-      const { error } = await loginWithEmail(creds.email, creds.password);
-      if (error) throw error;
+        <div className="pt-2 space-y-3">
+          <button
+            type="button"
+            disabled={resendCooldown > 0}
+            onClick={handleResendVerification}
+            className="w-full h-[52px] rounded-full bg-white text-[#0a0a0b] font-semibold text-sm sm:text-base hover:bg-neutral-200 transition-colors focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {resendCooldown > 0 ? `Resend email (${resendCooldown}s)` : 'Resend email'}
+          </button>
 
-      toast.success(`Signed in as demo ${role}.`);
-      router.push(nextUrl);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Demo sign-in failed.';
-      setErrorMessage(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(null);
-    }
-  };
+          <button
+            type="button"
+            onClick={() => {
+              setSignUpSuccessEmail(null);
+              reset();
+            }}
+            className="text-sm font-sans text-muted hover:text-white transition-colors py-2 focus-visible:outline-2 focus-visible:outline-white rounded"
+          >
+            Use a different email
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const handleSaveOnboarding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !customUsername.trim()) return;
+  // =========================================================================
+  // STATE 2: MAGIC LINK SENT
+  // =========================================================================
+  if (magicLinkSentEmail) {
+    return (
+      <div className="w-full text-center space-y-6 animate-fade-in" role="region" aria-label="Magic Link Sent">
+        <div className="w-16 h-16 rounded-full bg-surface-2 border border-line flex items-center justify-center mx-auto text-sky-400">
+          <CheckCircle2 className="w-8 h-8" aria-hidden="true" />
+        </div>
 
-    setIsOnboardingSaving(true);
-    try {
-      const cleanUsername = customUsername.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        <div className="space-y-2">
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+            Sign-in link sent
+          </h1>
+          <p className="font-sans text-sm text-muted max-w-sm mx-auto leading-relaxed">
+            We emailed a direct sign-in link to{' '}
+            <span className="font-medium text-white">{magicLinkSentEmail}</span>.
+          </p>
+        </div>
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          username: cleanUsername,
-          bio: bio.trim() || null,
-        })
-        .eq('id', user.id);
+        <div className="pt-2 space-y-3">
+          <button
+            type="button"
+            onClick={() => setMagicLinkSentEmail(null)}
+            className="w-full h-[52px] rounded-full bg-surface-2 border border-line text-white font-semibold text-sm sm:text-base hover:bg-surface-3 transition-colors focus-visible:outline-2 focus-visible:outline-white"
+          >
+            Return to password sign-in
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-      if (error) {
-        if (error.code === '23505') {
-          toast.error('That operative handle is already taken. Please choose another.');
-          setIsOnboardingSaving(false);
-          return;
-        }
-        throw error;
-      }
-
-      toast.success(`Operative identity established: @${cleanUsername}`);
-      setShowOnboarding(false);
-      router.push(nextUrl);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not save profile.';
-      toast.error(msg);
-    } finally {
-      setIsOnboardingSaving(false);
-    }
-  };
-
+  // =========================================================================
+  // STATE 3: AUTH FORM (SIGN IN / CREATE ACCOUNT)
+  // =========================================================================
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden">
-      {/* Background Matrix Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none" />
-
-      {/* Back to Surface Link */}
-      <div className="absolute top-6 left-6 z-20">
-        <Link href="/" className="font-mono text-xs text-[#9ca3af] hover:text-white flex items-center gap-1.5 transition-colors">
-          <span>←</span>
-          <span>Surface Feed</span>
-        </Link>
+    <div className="w-full space-y-6">
+      {/* Title & Subtitle */}
+      <div className="space-y-1.5">
+        <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-white">
+          {authMode === 'signin' ? 'Welcome back' : 'Create your account'}
+        </h1>
+        <p className="font-sans text-sm text-muted">
+          {authMode === 'signin'
+            ? 'Sign in to manage your listings, downloads and messages.'
+            : 'Join to list dead projects, claim free forks and find partners.'}
+        </p>
       </div>
 
-      {/* Main Two-Panel Layout on Desktop */}
-      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10">
-        {/* LEFT PANEL: Brand Visuals & Rotating Value Props (Desktop Only) */}
-        <div className="hidden md:flex flex-col justify-between p-8 bg-[#121212]/80 border border-[#2d2d2d] chamfer-12 h-[560px] relative overflow-hidden">
-          <div className="space-y-6 relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded bg-[#ff2a2a]/10 border border-[#ff2a2a]/40 flex items-center justify-center text-[#ff2a2a]">
-                <Skull className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="font-display font-bold text-xl tracking-wider text-white block">THE GRAVEYARD</span>
-                <span className="font-mono text-[10px] text-[#ff2a2a] uppercase tracking-widest">[TERMINAL AUTH]</span>
-              </div>
-            </div>
+      {/* Accessible Tab List (Sign in | Create account) */}
+      <div
+        role="tablist"
+        aria-label="Authentication Options"
+        className="relative grid grid-cols-2 p-1 rounded-full bg-surface-2 border border-line"
+      >
+        <button
+          type="button"
+          role="tab"
+          id="tab-signin"
+          aria-selected={authMode === 'signin'}
+          aria-controls="panel-auth"
+          tabIndex={authMode === 'signin' ? 0 : -1}
+          onClick={() => handleModeChange('signin')}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              handleModeChange('signup');
+              const nextEl = document.getElementById('tab-signup');
+              nextEl?.focus();
+            }
+          }}
+          className={cn(
+            'relative z-10 h-10 rounded-full text-sm font-sans font-medium transition-colors focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2',
+            authMode === 'signin' ? 'text-[#0a0a0b] font-semibold' : 'text-muted hover:text-white'
+          )}
+        >
+          {authMode === 'signin' && (
+            <motion.div
+              layoutId="auth-tab-pill"
+              className="absolute inset-0 bg-white rounded-full -z-10 shadow-sm"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          Sign in
+        </button>
 
-            <div className="space-y-2 mt-8">
-              <span className="font-mono text-xs uppercase tracking-wider text-[#39ff14]">[MISSION BRIEF]</span>
-              <h2 className="font-display text-2xl font-bold text-white leading-snug">
-                Where Dormant Codebases Rise Into Working Software.
-              </h2>
-            </div>
-          </div>
-
-          {/* Rotating Value Proposition */}
-          <div className="relative z-10 p-4 bg-[#181818] border border-[#2d2d2d] chamfer-6 min-h-[110px] flex flex-col justify-center">
-            <span className="font-mono text-[10px] uppercase text-[#9ca3af] tracking-wider block mb-1">
-              PROTOCOL // 0{valuePropIndex + 1}
-            </span>
-            <h4 className="font-display font-semibold text-sm text-white">{valueProps[valuePropIndex].title}</h4>
-            <p className="font-sans text-xs text-[#9ca3af] mt-1 leading-relaxed">
-              {valueProps[valuePropIndex].text}
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] font-mono text-[#9ca3af] pt-4 border-t border-[#2d2d2d]">
-            <span>ENCRYPT: AES-256</span>
-            <span>AUTH_STATUS: READY</span>
-          </div>
-
-          {/* Background Ambient Glow */}
-          <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-[#ff2a2a]/10 rounded-full blur-3xl pointer-events-none" />
-        </div>
-
-        {/* RIGHT PANEL: Auth Form Card */}
-        <div className="w-full">
-          <div className="rounded-[24px] bg-surface border border-line p-6 sm:p-8 flex flex-col shadow-2xl">
-            {/* Header inside form */}
-            <div className="text-center mb-6">
-              <div className="md:hidden flex justify-center mb-3">
-                <Skull className="w-8 h-8 text-brand-red" />
-              </div>
-              <h1 className="font-display text-2xl font-semibold text-white tracking-tight">
-                {authMode === 'signin' ? 'Sign in' : 'Create account'}
-              </h1>
-              <p className="font-sans text-xs text-muted mt-1.5 leading-relaxed">
-                {authMode === 'signin'
-                  ? 'Access your portfolio, claimed repositories, and operative vault.'
-                  : 'Join the developer exchange to buy, claim, and resurrect projects.'}
-              </p>
-            </div>
-
-            {/* Mode Tabs with Sliding Indicator */}
-            <div className="grid grid-cols-2 p-1 bg-surface-2 border border-line rounded-full mb-6 relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('signin');
-                  setErrorMessage(null);
-                }}
-                className={`relative py-2 text-xs font-sans font-medium rounded-full transition-colors z-10 ${
-                  authMode === 'signin' ? 'text-black' : 'text-muted hover:text-white'
-                }`}
-              >
-                {authMode === 'signin' && (
-                  <motion.div
-                    layoutId="loginTab"
-                    className="absolute inset-0 bg-white rounded-full"
-                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
-                  />
-                )}
-                <span className="relative z-10">Sign in</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('signup');
-                  setErrorMessage(null);
-                }}
-                className={`relative py-2 text-xs font-sans font-medium rounded-full transition-colors z-10 ${
-                  authMode === 'signup' ? 'text-black' : 'text-muted hover:text-white'
-                }`}
-              >
-                {authMode === 'signup' && (
-                  <motion.div
-                    layoutId="loginTab"
-                    className="absolute inset-0 bg-white rounded-full"
-                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
-                  />
-                )}
-                <span className="relative z-10">Create account</span>
-              </button>
-            </div>
-
-              {/* Error Banner */}
-              {errorMessage && (
-                <div className="mb-4 p-3 bg-[#ff2a2a]/10 border border-[#ff2a2a]/30 rounded text-xs font-sans text-[#ff2a2a] flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
-
-              {/* OAuth Buttons */}
-              <div className="flex flex-col gap-2.5 mb-5">
-                <Button
-                  variant="secondary"
-                  size="md"
-                  fullWidth
-                  onClick={() => handleOAuthLogin('github')}
-                  isLoading={isLoading === 'github'}
-                  leftIcon={<Github className="w-4 h-4" />}
-                >
-                  Continue with GitHub
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  fullWidth
-                  onClick={() => handleOAuthLogin('google')}
-                  isLoading={isLoading === 'google'}
-                  leftIcon={
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .533 5.333.533 12S5.867 24 12.48 24c3.44 0 6.013-1.133 8.053-3.24 2.107-2.187 2.76-5.453 2.76-7.84 0-.787-.067-1.453-.187-1.92h-12.24z" />
-                    </svg>
-                  }
-                >
-                  Continue with Google
-                </Button>
-              </div>
-
-              {/* Divider */}
-              <div className="relative flex items-center justify-center my-4">
-                <div className="border-t border-[#2d2d2d] w-full" />
-                <span className="bg-[#121212] px-3 font-mono text-[11px] text-[#9ca3af] uppercase shrink-0">
-                  Or with email
-                </span>
-              </div>
-
-              {/* Email Form */}
-              <form onSubmit={handleEmailAuth} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="font-mono text-xs text-[#ededed] block">Email Address</label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="operative@domain.com"
-                    autoComplete="email"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-mono text-xs text-[#ededed]">Password</label>
-                    {authMode === 'signin' && (
-                      <button
-                        type="button"
-                        onClick={() => toast.info('For this portfolio showcase, password reset sends an email if configured in Supabase.')}
-                        className="text-[11px] font-mono text-[#9ca3af] hover:text-white underline"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-white"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <Button
-                  variant="primary"
-                  mode="brand"
-                  size="md"
-                  fullWidth
-                  type="submit"
-                  isLoading={isLoading === 'email'}
-                >
-                  {authMode === 'signin' ? 'Sign In' : 'Create Account'}
-                </Button>
-              </form>
-
-              {/* DEMO MODE BUTTONS (When NEXT_PUBLIC_DEMO_MODE=true) */}
-              {isDemo && (
-                <div className="mt-6 pt-5 border-t border-[#2d2d2d] space-y-2.5">
-                  <span className="font-mono text-[10px] text-[#fbbf24] uppercase tracking-wider block text-center">
-                    [DEMO SECTOR] 1-Click Fast Access
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleDemoLogin('buyer')}
-                      isLoading={isLoading === 'demo_buyer'}
-                    >
-                      Try as Demo Buyer
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleDemoLogin('seller')}
-                      isLoading={isLoading === 'demo_seller'}
-                    >
-                      Try as Demo Seller
-                    </Button>
-                  </div>
-                </div>
-              )}
-          </div>
-        </div>
+        <button
+          type="button"
+          role="tab"
+          id="tab-signup"
+          aria-selected={authMode === 'signup'}
+          aria-controls="panel-auth"
+          tabIndex={authMode === 'signup' ? 0 : -1}
+          onClick={() => handleModeChange('signup')}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              handleModeChange('signin');
+              const prevEl = document.getElementById('tab-signin');
+              prevEl?.focus();
+            }
+          }}
+          className={cn(
+            'relative z-10 h-10 rounded-full text-sm font-sans font-medium transition-colors focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2',
+            authMode === 'signup' ? 'text-[#0a0a0b] font-semibold' : 'text-muted hover:text-white'
+          )}
+        >
+          {authMode === 'signup' && (
+            <motion.div
+              layoutId="auth-tab-pill"
+              className="absolute inset-0 bg-white rounded-full -z-10 shadow-sm"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          Create account
+        </button>
       </div>
 
-      {/* FIRST-TIME USER ONBOARDING MODAL */}
-      {showOnboarding && (
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-[24px] bg-surface border border-line p-6 sm:p-7 space-y-4 shadow-2xl" data-lenis-prevent>
-            <div className="flex items-center gap-3 pb-3 border-b border-line">
-              <div className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center justify-center text-neon-green">
-                <User className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-display font-semibold text-lg text-white">Choose your handle</h3>
-                <p className="font-sans text-xs text-muted">Select your unique public developer username</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveOnboarding} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="font-sans text-xs text-fg block font-medium">
-                  Username <span className="text-brand-red">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-sm text-muted">@</span>
-                  <Input
-                    value={customUsername}
-                    onChange={(e) => setCustomUsername(e.target.value)}
-                    placeholder="cyphernaut"
-                    className="pl-8"
-                    required
-                  />
-                </div>
-                <p className="font-mono text-[10px] text-muted">Letters, numbers, hyphens and underscores only.</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-sans text-xs text-fg block font-medium">Bio (Optional)</label>
-                <Input
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  placeholder="Full-stack engineer, Rust explorer, building SaaS MVPs"
-                />
-              </div>
-
-              <div className="pt-2">
-                <Button variant="primary" mode="buy" size="md" fullWidth type="submit" isLoading={isOnboardingSaving}>
-                  Save & continue
-                </Button>
-              </div>
-            </form>
+      {/* Inline Form Error Alert */}
+      {formAlert && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-xl bg-brand-red/10 border border-brand-red/30 flex items-start justify-between gap-3 text-brand-red animate-auth-shake"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+            <p className="text-xs sm:text-sm font-sans leading-relaxed">{formAlert}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setFormAlert(null)}
+            className="text-brand-red/80 hover:text-brand-red p-0.5 rounded focus-visible:outline-2 focus-visible:outline-brand-red"
+            aria-label="Dismiss alert"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
+
+      {/* OAuth Buttons */}
+      <div className="space-y-3">
+        {/* GitHub OAuth Button */}
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={() => handleOAuth('github')}
+          className="w-full h-[52px] rounded-full bg-surface-2 border border-line hover:border-white/20 hover:bg-surface-3 transition-colors flex items-center justify-center gap-3 text-white font-sans text-sm sm:text-base font-medium focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Continue with GitHub"
+        >
+          {oauthLoading === 'github' ? (
+            <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+          ) : (
+            <Github className="w-5 h-5" aria-hidden="true" />
+          )}
+          <span>Continue with GitHub</span>
+        </button>
+
+        {/* Google OAuth Button */}
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={() => handleOAuth('google')}
+          className="w-full h-[52px] rounded-full bg-surface-2 border border-line hover:border-white/20 hover:bg-surface-3 transition-colors flex items-center justify-center gap-3 text-white font-sans text-sm sm:text-base font-medium focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Continue with Google"
+        >
+          {oauthLoading === 'google' ? (
+            <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+          ) : (
+            <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="#EA4335"
+                d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
+              />
+              <path
+                fill="#4285F4"
+                d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"
+              />
+            </svg>
+          )}
+          <span>Continue with Google</span>
+        </button>
+      </div>
+
+      {/* Centered Rule Divider */}
+      <div className="flex items-center gap-4 my-6">
+        <div className="h-[1px] flex-1 bg-line" aria-hidden="true" />
+        <span className="font-mono text-xs text-muted/70 uppercase tracking-widest text-center select-none">
+          or continue with email
+        </span>
+        <div className="h-[1px] flex-1 bg-line" aria-hidden="true" />
+      </div>
+
+      {/* Main Email Form */}
+      <form
+        id="panel-auth"
+        role="tabpanel"
+        aria-labelledby={`tab-${authMode}`}
+        onSubmit={handleSubmit(onSubmit, onInvalidSubmit)}
+        noValidate
+        aria-busy={isBusy}
+        className="space-y-4"
+      >
+        {/* Email Field */}
+        <div className="space-y-1.5">
+          <label htmlFor="auth-email" className="block text-sm font-sans font-medium text-fg">
+            Email
+          </label>
+          <input
+            id="auth-email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck="false"
+            placeholder="you@example.com"
+            disabled={isBusy}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? 'auth-email-error' : undefined}
+            {...register('email')}
+            className={cn(
+              'h-12 w-full rounded-[12px] border bg-surface-2 px-4 py-2 text-base font-sans text-fg placeholder:text-muted/60 transition-colors',
+              errors.email
+                ? 'border-brand-red focus:border-brand-red'
+                : 'border-line hover:border-white/20 focus:border-white',
+              'focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2',
+              'disabled:cursor-not-allowed disabled:opacity-50'
+            )}
+          />
+          {errors.email && (
+            <div id="auth-email-error" className="flex items-center gap-1.5 text-xs text-brand-red font-sans pt-0.5" aria-live="polite">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>{errors.email.message}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Password Field */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="auth-password" className="block text-sm font-sans font-medium text-fg">
+              Password
+            </label>
+            {authMode === 'signin' && (
+              <Link
+                href="/forgot-password"
+                className="text-xs font-sans text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-white rounded"
+              >
+                Forgot password?
+              </Link>
+            )}
+          </div>
+
+          <div className="relative">
+            <input
+              id="auth-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+              autoCapitalize="none"
+              spellCheck="false"
+              placeholder=""
+              disabled={isBusy}
+              onKeyDown={handlePasswordKey}
+              onKeyUp={handlePasswordKey}
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={
+                [
+                  errors.password ? 'auth-password-error' : null,
+                  isCapsLockOn ? 'auth-caps-lock' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
+              {...register('password')}
+              className={cn(
+                'h-12 w-full rounded-[12px] border bg-surface-2 pl-4 pr-12 py-2 text-base font-sans text-fg transition-colors',
+                errors.password
+                  ? 'border-brand-red focus:border-brand-red'
+                  : 'border-line hover:border-white/20 focus:border-white',
+                'focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2',
+                'disabled:cursor-not-allowed disabled:opacity-50'
+              )}
+            />
+
+            {/* Show/Hide Password Toggle (44px hit target) */}
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              className="absolute right-0 top-0 h-12 w-12 flex items-center justify-center text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-white rounded-[12px]"
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" aria-hidden="true" />
+              ) : (
+                <Eye className="w-4 h-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+
+          {/* Caps Lock Warning */}
+          {isCapsLockOn && (
+            <div id="auth-caps-lock" className="flex items-center gap-1.5 text-xs text-amber-400 font-sans pt-0.5" aria-live="polite">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>Caps Lock is on</span>
+            </div>
+          )}
+
+          {/* Password Validation Error */}
+          {errors.password && (
+            <div id="auth-password-error" className="flex items-center gap-1.5 text-xs text-brand-red font-sans pt-0.5" aria-live="polite">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>{errors.password.message}</span>
+            </div>
+          )}
+
+          {/* Password Strength Meter on Sign Up */}
+          {authMode === 'signup' && <PasswordStrengthMeter password={passwordValue} />}
+        </div>
+
+        {/* Primary Submit Button (White pill, 52px high) */}
+        <div className="pt-2">
+          <button
+            type="submit"
+            disabled={isBusy}
+            className="w-full h-[52px] rounded-full bg-white text-[#0a0a0b] font-semibold text-sm sm:text-base hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-[#0a0a0b]" aria-hidden="true" />
+                <span>{authMode === 'signin' ? 'Signing in...' : 'Creating account...'}</span>
+              </>
+            ) : (
+              <span>{authMode === 'signin' ? 'Sign in' : 'Create account'}</span>
+            )}
+          </button>
+        </div>
+
+        {/* Magic Link Option */}
+        <div className="pt-1 text-center">
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={handleMagicLink}
+            className="text-xs sm:text-sm font-sans text-muted hover:text-white transition-colors py-1.5 px-3 rounded-full hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+          >
+            {magicLinkLoading ? 'Sending sign-in link...' : 'Email me a sign-in link instead'}
+          </button>
+        </div>
+      </form>
+
+      {/* Secondary Mode Switch Link */}
+      <div className="text-center text-sm font-sans text-muted">
+        {authMode === 'signin' ? (
+          <>
+            Don&apos;t have an account?{' '}
+            <button
+              type="button"
+              onClick={() => handleModeChange('signup')}
+              className="text-white font-medium hover:underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-white rounded"
+            >
+              Sign up
+            </button>
+          </>
+        ) : (
+          <>
+            Already have an account?{' '}
+            <button
+              type="button"
+              onClick={() => handleModeChange('signin')}
+              className="text-white font-medium hover:underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-white rounded"
+            >
+              Sign in
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Legal Note */}
+      <p className="text-xs font-sans text-muted/70 text-center leading-relaxed">
+        By continuing you agree to our{' '}
+        <Link href="/terms" className="text-muted hover:text-white underline underline-offset-2 transition-colors">
+          Terms
+        </Link>{' '}
+        and{' '}
+        <Link href="/privacy" className="text-muted hover:text-white underline underline-offset-2 transition-colors">
+          Privacy Policy
+        </Link>
+        .
+      </p>
+
+      {/* Demo Mode Group (Workstream E) */}
+      <DemoModeGroup nextParam={nextParam} intentParam={intentParam} disabled={isBusy} />
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a]" />}>
-      <LoginContent />
+    <Suspense
+      fallback={
+        <div className="min-h-dvh flex items-center justify-center bg-[#0a0a0b] text-muted font-sans text-sm">
+          Loading authentication...
+        </div>
+      }
+    >
+      <AuthShell mode="signin">
+        <LoginContent />
+      </AuthShell>
     </Suspense>
   );
 }

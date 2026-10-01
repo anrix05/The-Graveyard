@@ -171,7 +171,7 @@ export default function FileTreeViewer({ paths }: FileTreeViewerProps) {
 
       <div
         data-lenis-prevent
-        className="max-h-[360px] overflow-y-auto rounded-xl bg-black/40 border border-line/60 p-2.5 font-mono text-xs scrollbar-thin"
+        className="max-h-[360px] overflow-y-auto overflow-x-auto rounded-xl bg-black/40 border border-line/60 p-2.5 font-mono text-xs scrollbar-thin"
       >
         {rootChildren.map((node) => (
           <TreeItem key={node.path} node={node} depth={0} />

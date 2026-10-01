@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Button from '@/components/ui/Button';
@@ -17,6 +18,9 @@ import ScreenshotGallery from '@/components/project/ScreenshotGallery';
 import FileTreeViewer from '@/components/project/FileTreeViewer';
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer';
 import usePerfTier from '@/hooks/usePerfTier';
+import useHeroFxMode from '@/hooks/useHeroFxMode';
+import { HeroFxMode } from '@/lib/perf';
+import SoulsCanvas from '@/components/hero/SoulsCanvas';
 import { Project } from '@/types/project';
 import { ArrowRight, CheckCircle2, Circle, Clock, Code2, Users, RotateCcw } from 'lucide-react';
 import { formatLOC, formatDeadFor } from '@/lib/format';
@@ -185,11 +189,13 @@ const SAMPLE_PROJECTS: Project[] = [
 export default function DesignSystemPage() {
   const [activeTab, setActiveTab] = useState<'typography' | 'tokens' | 'components' | 'cards' | 'detail' | 'motion'>('cards');
   const { tier, setTier } = usePerfTier();
+  const { mode: fxMode, setMode: setFxMode } = useHeroFxMode();
+  const [fxSetting, setFxSetting] = useState<HeroFxMode | 'auto'>('auto');
 
   const flagship = SAMPLE_PROJECTS[0];
 
   return (
-    <div className="min-h-screen bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
       <Header />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 sm:py-16 space-y-12">
@@ -197,33 +203,69 @@ export default function DesignSystemPage() {
         <div className="border-b border-line pb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
           <div className="space-y-3">
             <span className="font-mono text-xs uppercase tracking-widest text-brand-red block">
-              Design System v2.2
+              Design System v2.7
             </span>
             <h1 className="text-4xl sm:text-5xl font-display font-semibold text-white tracking-tight">
               Craft &amp; Architecture
             </h1>
             <p className="text-muted text-base max-w-2xl leading-relaxed">
-              Bento grid alignment, full-detail project architecture, universal CardFooter, completion chips, and interactive components.
+              Bento grid alignment, full-detail project architecture, universal CardFooter, mobile hero motion, and performance governance.
             </p>
           </div>
 
-          {/* Live Perf Tier Switcher */}
-          <div className="flex items-center gap-2 p-2 bg-surface rounded-full border border-line shrink-0">
-            <span className="font-mono text-xs text-muted px-2">Perf Tier:</span>
-            {(['high', 'mid', 'low'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTier(t)}
-                className={`px-3 py-1 text-xs font-mono rounded-full capitalize transition-colors ${
-                  tier === t
-                    ? 'bg-white text-black font-semibold shadow-sm'
-                    : 'bg-surface-2 text-muted hover:text-white'
-                }`}
+          {/* Actions & Live Switchers */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Link href="/design-system/responsive">
+              <Button
+                variant="secondary"
+                mode="brand"
+                size="sm"
+                leftIcon={<Users className="w-3.5 h-3.5" />}
               >
-                {t}
-              </button>
-            ))}
+                Responsive Simulator
+              </Button>
+            </Link>
+
+            {/* Perf Tier Switcher */}
+            <div className="flex items-center gap-1.5 p-1.5 bg-surface rounded-full border border-line">
+              <span className="font-mono text-xs text-muted px-2">Tier:</span>
+              {(['high', 'mid', 'low'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTier(t)}
+                  className={`px-3 py-1 text-xs font-mono rounded-full capitalize transition-colors cursor-pointer ${
+                    tier === t
+                      ? 'bg-white text-black font-semibold shadow-sm'
+                      : 'bg-surface-2 text-muted hover:text-white'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Hero FX Mode Switcher */}
+            <div className="flex items-center gap-1 p-1 bg-surface rounded-full border border-line">
+              <span className="font-mono text-xs text-muted px-2">Hero FX:</span>
+              {(['auto', 'canvas-desktop', 'canvas-mobile', 'css', 'static'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setFxSetting(m);
+                    setFxMode(m);
+                  }}
+                  className={`px-2.5 py-1 text-[11px] font-mono rounded-full uppercase transition-colors cursor-pointer ${
+                    fxSetting === m
+                      ? 'bg-brand-red text-white font-semibold shadow-sm'
+                      : 'bg-surface-2 text-muted hover:text-white'
+                  }`}
+                >
+                  {m === 'auto' ? 'Auto' : m.replace('canvas-', '')}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -613,30 +655,97 @@ export default function DesignSystemPage() {
         {activeTab === 'motion' && (
           <div className="space-y-12 animate-in fade-in duration-200">
             <section className="p-6 sm:p-8 bg-surface rounded-card border border-line space-y-4">
-              <h2 className="font-display text-xl font-semibold text-white">Performance Governor &amp; Tiers</h2>
+              <h2 className="font-display text-xl font-semibold text-white">Performance Governor &amp; Tiers (v2.7)</h2>
               <p className="font-sans text-sm text-fg/80 leading-relaxed max-w-2xl">
-                The Graveyard dynamically adjusts its visual richness based on device capabilities:
+                The Graveyard dynamically adjusts its visual richness based on device capabilities, hardware concurrency, pointer precision, and battery health:
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
                 <div className={`p-4 rounded-xl border ${tier === 'high' ? 'border-neon-green bg-neon-green/5' : 'border-line bg-surface-2'}`}>
-                  <h3 className="font-sans font-semibold text-white text-base">High Tier</h3>
-                  <p className="font-sans text-xs text-muted mt-2">
-                    Hero canvas (60 particles @ 30fps), centered custom cursor ring, view transitions, Lenis smooth scroll, magnetic controls.
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-sans font-semibold text-white text-base">High Tier</h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neon-green/10 text-neon-green border border-neon-green/20">Desktop</span>
+                  </div>
+                  <p className="font-sans text-xs text-muted mt-2 leading-relaxed">
+                    Full hero canvas (55 particles @ 30fps), dynamic legibility mask, pointer repulsion, centered custom cursor ring, view transitions, Lenis smooth scroll, magnetic controls.
                   </p>
                 </div>
 
                 <div className={`p-4 rounded-xl border ${tier === 'mid' ? 'border-amber bg-amber/5' : 'border-line bg-surface-2'}`}>
-                  <h3 className="font-sans font-semibold text-white text-base">Mid Tier</h3>
-                  <p className="font-sans text-xs text-muted mt-2">
-                    Hero canvas (35 particles @ 30fps), native cursor, no magnetic, no view transitions, Lenis smooth scroll active.
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-sans font-semibold text-white text-base">Mid Tier</h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber/10 text-amber border border-amber/20">Mobile &amp; Touch</span>
+                  </div>
+                  <p className="font-sans text-xs text-muted mt-2 leading-relaxed">
+                    Lightweight mobile canvas (20–26 particles @ 24fps cap, DPR 1, scroll velocity, touch ripple), dynamic legibility mask, native cursor, Lenis smooth scroll.
                   </p>
                 </div>
 
                 <div className={`p-4 rounded-xl border ${tier === 'low' ? 'border-brand-red bg-brand-red/5' : 'border-line bg-surface-2'}`}>
-                  <h3 className="font-sans font-semibold text-white text-base">Low Tier / Battery</h3>
-                  <p className="font-sans text-xs text-muted mt-2">
-                    No canvas (static background), native scrolling, no cursor, no magnetic, opacity-only CSS reveals, static marquee.
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-sans font-semibold text-white text-base">Low Tier / Battery</h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-red/10 text-brand-red border border-brand-red/20">Fallback</span>
+                  </div>
+                  <p className="font-sans text-xs text-muted mt-2 leading-relaxed">
+                    Pure CSS fallback (drifting ambient glow + 10 floating glyphs in safe zones) or static gradient. Zero JS frame loops, native scrolling, no magnetic effects.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Live Hero FX Sandbox Preview */}
+            <section className="p-6 sm:p-8 bg-surface rounded-card border border-line space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-neon-green animate-pulse" />
+                    <h2 className="font-display text-xl font-semibold text-white">Hero Motion Sandbox (v2.7)</h2>
+                  </div>
+                  <p className="font-sans text-sm text-fg/80 max-w-xl">
+                    Live interactive preview of hero background motion. Active mode:{' '}
+                    <code className="font-mono text-xs text-brand-red bg-surface-2 px-2 py-0.5 rounded border border-line">
+                      {fxMode}
+                    </code>
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-surface-2 rounded-full border border-line">
+                  {(['auto', 'canvas-desktop', 'canvas-mobile', 'css', 'static'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setFxSetting(m);
+                        setFxMode(m);
+                      }}
+                      className={`px-3 py-1 text-xs font-mono rounded-full uppercase transition-colors cursor-pointer ${
+                        fxSetting === m
+                          ? 'bg-brand-red text-white font-semibold shadow-sm'
+                          : 'text-muted hover:text-white'
+                      }`}
+                    >
+                      {m === 'auto' ? 'Auto' : m.replace('canvas-', '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sandbox viewport container simulating hero */}
+              <div className="relative h-64 sm:h-80 w-full rounded-2xl border border-line bg-[#0a0a0b] overflow-hidden flex flex-col items-center justify-center text-center p-6 select-none">
+                <SoulsCanvas />
+
+                <div className="relative z-10 space-y-3 max-w-md">
+                  <div
+                    data-hero-text
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-2 border border-line text-xs font-mono text-white"
+                  >
+                    <span>Dynamic Legibility Mask Active</span>
+                  </div>
+                  <h3 data-hero-text className="text-xl sm:text-2xl font-display font-semibold text-white">
+                    Where dead code gets resurrected
+                  </h3>
+                  <p data-hero-text className="text-xs sm:text-sm font-sans text-fg/75">
+                    Glyphs drift into margins and gaps, safely avoiding this text column on all screens.
                   </p>
                 </div>
               </div>

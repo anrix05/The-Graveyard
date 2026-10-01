@@ -25,7 +25,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           type={type}
           className={cn(
-            "flex h-11 w-full rounded-[12px] border bg-surface-2 px-4 py-2.5 text-sm text-fg",
+            "flex h-11 w-full rounded-[12px] border bg-surface-2 px-4 py-2.5 text-base sm:text-sm text-fg",
             isCode || type === 'url' ? 'font-mono' : 'font-sans',
             "placeholder:text-muted/60 transition-colors duration-150",
             hasError

@@ -1650,11 +1650,11 @@ async function seed() {
 
       for (let sIdx = 1; sIdx <= 3; sIdx++) {
         const shotBuffer = await generateScreenshotBuffer(mode, sIdx as 1 | 2 | 3);
-        const shotStoragePath = `${sellerId}/${projectId}/shot-${sIdx}.png`;
+        const shotStoragePath = `${sellerId}/${projectId}/shot-${sIdx}.webp`;
 
         await supabase.storage
           .from('project-covers')
-          .upload(shotStoragePath, shotBuffer, { upsert: true, contentType: 'image/png' });
+          .upload(shotStoragePath, shotBuffer, { upsert: true, contentType: 'image/webp' });
 
         const { data: pubData } = supabase.storage
           .from('project-covers')

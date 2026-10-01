@@ -2,7 +2,7 @@
 
 import React, { useRef } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import { Project } from '@/types/project';
@@ -20,15 +20,24 @@ export default function ResurrectedWall({ projects }: ResurrectedWallProps) {
     return null;
   }
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (!scrollContainerRef.current) return;
-    const offset = direction === 'left' ? -380 : 380;
-    scrollContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+  const handleScrollDirection = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const offset = direction === 'left' ? -340 : 340;
+      scrollContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') {
+      handleScrollDirection('left');
+    } else if (e.key === 'ArrowRight') {
+      handleScrollDirection('right');
+    }
   };
 
   return (
-    <section className="py-20 border-t border-line overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 flex items-end justify-between gap-4">
+    <section className="py-16 sm:py-20 border-t border-line overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 sm:mb-8 flex items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="w-4 h-4 text-neon-green" />
@@ -36,28 +45,28 @@ export default function ResurrectedWall({ projects }: ResurrectedWallProps) {
               The Wall of Resurrection
             </span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-display text-white">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-display text-white">
             Codebases given a second life
           </h2>
-          <p className="text-muted text-sm mt-1 max-w-lg">
+          <p className="text-muted text-xs sm:text-sm mt-1 max-w-lg">
             These abandoned projects were claimed, purchased, or partnered through the terminal and are thriving again.
           </p>
         </div>
 
-        {/* Scroll Controls */}
-        <div className="hidden sm:flex items-center gap-2">
+        {/* Scroll Controls (visible on all screens) */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => scroll('left')}
-            className="p-2.5 rounded-full border border-line bg-surface-2 text-muted hover:text-white hover:border-white/20 transition-colors"
+            onClick={() => handleScrollDirection('left')}
+            className="p-2 sm:p-2.5 rounded-full border border-line bg-surface-2 text-muted hover:text-white hover:border-white/20 transition-colors"
             aria-label="Scroll left"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <button
             type="button"
-            onClick={() => scroll('right')}
-            className="p-2.5 rounded-full border border-line bg-surface-2 text-muted hover:text-white hover:border-white/20 transition-colors"
+            onClick={() => handleScrollDirection('right')}
+            className="p-2 sm:p-2.5 rounded-full border border-line bg-surface-2 text-muted hover:text-white hover:border-white/20 transition-colors"
             aria-label="Scroll right"
           >
             <ArrowRight className="w-4 h-4" />
@@ -65,12 +74,15 @@ export default function ResurrectedWall({ projects }: ResurrectedWallProps) {
         </div>
       </div>
 
-      {/* Horizontal Draggable Snap Rail */}
+      {/* Horizontal Draggable Snap Rail with arrow key navigation */}
       <div
         ref={scrollContainerRef}
         data-cursor="Drag"
-        className="flex gap-5 overflow-x-auto pb-6 px-4 sm:px-6 lg:px-8 snap-x snap-mandatory scrollbar-none select-none"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className="flex gap-4 sm:gap-5 overflow-x-auto pb-6 px-4 sm:px-6 lg:px-8 snap-x snap-mandatory scrollbar-none select-none scroll-px-4 sm:scroll-px-6 lg:scroll-px-8 focus-visible:outline-none"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        aria-label="Resurrected codebases rail. Use arrow keys to navigate."
       >
         {projects.map((project) => {
           const revivalText =
@@ -90,14 +102,14 @@ export default function ResurrectedWall({ projects }: ResurrectedWallProps) {
           return (
             <div
               key={project.id}
-              className="w-[280px] sm:w-[320px] shrink-0 snap-start rounded-[20px] bg-surface border border-line p-4 space-y-3 hover:border-white/20 transition-all duration-300"
+              className="w-[clamp(240px,70vw,340px)] shrink-0 snap-start rounded-[20px] bg-surface border border-line p-3.5 sm:p-4 space-y-3 hover:border-white/20 transition-all duration-300 min-w-0"
             >
               {/* Thumbnail */}
               <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden bg-surface-2">
                 {project.cover_url ? (
-                  <Image
+                  <Img
                     src={project.cover_url}
-                    alt={project.title}
+                    alt={`${project.title} cover image`}
                     fill
                     sizes="320px"
                     className="object-cover"

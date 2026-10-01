@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { Project } from '@/types/project';
 import { formatEpitaph } from '@/lib/epitaph';
 import { ModeBadge } from '@/components/ui/badge';
@@ -24,9 +24,9 @@ export default function CompactProjectCard({ project }: CompactProjectCardProps)
       {/* Cover Column 40% */}
       <div className="relative w-full sm:w-[40%] min-h-[140px] sm:min-h-full overflow-hidden bg-surface-2 shrink-0">
         {project.cover_url ? (
-          <Image
+          <Img
             src={project.cover_url}
-            alt={project.title}
+            alt={`${project.title} cover image`}
             fill
             unoptimized
             sizes="(max-width: 640px) 100vw, 200px"

@@ -20,6 +20,7 @@ import {
   CheckCircle,
   AlertTriangle,
   RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -61,6 +62,7 @@ function DashboardContent() {
   const tabParam = (searchParams.get('tab') as DashboardTab) || 'overview';
   const recipientParam = searchParams.get('recipient');
   const [activeTab, setActiveTab] = useState<DashboardTab>(tabParam);
+  const [isMoreSheetOpen, setIsMoreSheetOpen] = useState(false);
 
   // Data states
   const [myProjects, setMyProjects] = useState<Project[]>([]);
@@ -384,12 +386,12 @@ function DashboardContent() {
   const openPitchesCount = receivedPitches.filter((p) => p.status === 'pending').length;
 
   return (
-    <div className="min-h-screen bg-bg text-white flex flex-col pb-20 md:pb-0">
+    <div className="min-h-dvh bg-bg text-white flex flex-col pb-28 lg:pb-0">
       <Header />
 
-      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 md:py-10 flex flex-col md:flex-row gap-8">
-        {/* DESKTOP LEFT SIDEBAR */}
-        <aside className="hidden md:flex flex-col w-64 shrink-0 gap-6">
+      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 lg:py-10 flex flex-col lg:flex-row gap-8">
+        {/* DESKTOP LEFT SIDEBAR (>= lg) */}
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 gap-6">
           <div className="p-5 bg-surface rounded-card border border-line space-y-3">
             <span className="font-mono text-xs uppercase tracking-widest text-[#ff2a2a] block">
               Operative console
@@ -454,8 +456,8 @@ function DashboardContent() {
                 </Link>
               </div>
 
-              {/* StatCards Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {/* StatCards Grid: 2 columns on mobile, 3 on tablet, 5 on lg */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
                 <StatCard
                   label="Earnings (Demo)"
                   value={formatINR(totalEarningsPaise, { showFreeForZero: false })}
@@ -598,52 +600,43 @@ function DashboardContent() {
                   onAction={() => router.push('/submit')}
                 />
               ) : (
-                <div className="border border-line bg-surface rounded-card overflow-hidden">
-                  <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
-                      <tr>
-                        <th className="py-3.5 px-4 font-normal">Codebase</th>
-                        <th className="py-3.5 px-4 font-normal">Mode</th>
-                        <th className="py-3.5 px-4 font-normal">Status</th>
-                        <th className="py-3.5 px-4 font-normal">Views</th>
-                        <th className="py-3.5 px-4 font-normal">Created</th>
-                        <th className="py-3.5 px-4 font-normal text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
-                      {myProjects.map((p) => {
-                        let statusElement: React.ReactNode = <StatusBadge status="live" label="Live" />;
-                        if (p.interaction_type === 'buy') {
-                          statusElement = p.is_sold ? (
-                            <StatusBadge status="sold" label="Sold" />
-                          ) : (
-                            <StatusBadge status="live" label="For sale" />
-                          );
-                        } else if (p.interaction_type === 'adopt') {
-                          statusElement = <StatusBadge status="claimed" label="Live" />;
-                        } else if (p.interaction_type === 'collab') {
-                          statusElement = p.is_collab_filled ? (
-                            <StatusBadge status="filled" label="Filled" />
-                          ) : (
-                            <StatusBadge status="live" label="Open" />
-                          );
-                        }
+                <>
+                  {/* Mobile Stacked Cards (< md) */}
+                  <div className="md:hidden space-y-3">
+                    {myProjects.map((p) => {
+                      let statusElement: React.ReactNode = <StatusBadge status="live" label="Live" />;
+                      if (p.interaction_type === 'buy') {
+                        statusElement = p.is_sold ? (
+                          <StatusBadge status="sold" label="Sold" />
+                        ) : (
+                          <StatusBadge status="live" label="For sale" />
+                        );
+                      } else if (p.interaction_type === 'adopt') {
+                        statusElement = <StatusBadge status="claimed" label="Live" />;
+                      } else if (p.interaction_type === 'collab') {
+                        statusElement = p.is_collab_filled ? (
+                          <StatusBadge status="filled" label="Filled" />
+                        ) : (
+                          <StatusBadge status="live" label="Open" />
+                        );
+                      }
 
-                        return (
-                          <tr key={p.id} className="hover:bg-surface-2/40 transition-colors">
-                            <td className="py-3 px-4 flex items-center gap-3">
-                              <div className="w-12 h-8 rounded-lg overflow-hidden bg-surface-2 shrink-0 border border-line">
+                      return (
+                        <div key={p.id} className="p-4 rounded-xl bg-surface border border-line space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div className="w-10 h-7 rounded-md overflow-hidden bg-surface-2 shrink-0 border border-line">
                                 {p.cover_url ? (
-                                  <img src={p.cover_url} alt={p.title} className="w-full h-full object-cover" />
+                                  <img src={p.cover_url} alt={`${p.title} cover image`} className="w-full h-full object-cover" />
                                 ) : (
                                   <CoverArt title={p.title} mode={p.interaction_type} className="w-full h-full" />
                                 )}
                               </div>
-                              <div className="truncate max-w-[180px] sm:max-w-[220px]">
+                              <div className="min-w-0 flex-1">
                                 <Link href={`/project/${p.id}`} className="font-sans font-medium text-sm text-white hover:underline block truncate">
                                   {p.title}
                                 </Link>
-                                <span className="text-[11px] text-muted">
+                                <span className="font-mono text-[11px] text-muted block truncate">
                                   {p.interaction_type === 'buy'
                                     ? formatINR(p.price_paise, { showFreeForZero: false })
                                     : p.interaction_type === 'adopt'
@@ -651,53 +644,147 @@ function DashboardContent() {
                                     : p.collab_terms || 'Collab'}
                                 </span>
                               </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <ModeBadge mode={p.interaction_type} />
-                            </td>
-                            <td className="py-3 px-4">{statusElement}</td>
-                            <td className="py-3 px-4 text-muted">
-                              <span>{p.views || 0}</span>
-                            </td>
-                            <td className="py-3 px-4 text-muted">
-                              {new Date(p.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <Link href={`/project/${p.id}`}>
-                                  <button className="p-1.5 hover:text-white text-muted" title="View details">
-                                    <Eye className="w-4 h-4" />
-                                  </button>
-                                </Link>
-                                <Link href={`/edit/${p.id}`}>
-                                  <button className="p-1.5 hover:text-[#39ff14] text-muted" title="Edit codebase">
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                </Link>
-                                {p.interaction_type === 'collab' && (
-                                  <button
-                                    onClick={() => handleToggleCollabFilled(p)}
-                                    className="p-1.5 hover:text-[#60a5fa] text-muted"
-                                    title={p.is_collab_filled ? 'Reopen position' : 'Mark filled'}
-                                  >
-                                    <Users className="w-4 h-4" />
-                                  </button>
-                                )}
+                            </div>
+                            <div className="shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
+                              <ModeBadge mode={p.interaction_type} size="sm" />
+                              {statusElement}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-line text-xs font-mono text-muted">
+                            <span>{p.views || 0} views · {new Date(p.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                            <div className="flex items-center gap-2">
+                              <Link href={`/project/${p.id}`} className="p-1 hover:text-white" title="View details">
+                                <Eye className="w-4 h-4" />
+                              </Link>
+                              <Link href={`/edit/${p.id}`} className="p-1 hover:text-[#39ff14]" title="Edit codebase">
+                                <Edit className="w-4 h-4" />
+                              </Link>
+                              {p.interaction_type === 'collab' && (
                                 <button
-                                  onClick={() => setProjectToDelete(p)}
-                                  className="p-1.5 hover:text-[#ff2a2a] text-muted"
-                                  title="Delete listing"
+                                  onClick={() => handleToggleCollabFilled(p)}
+                                  className="p-1 hover:text-[#60a5fa]"
+                                  title={p.is_collab_filled ? 'Reopen position' : 'Mark filled'}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Users className="w-4 h-4" />
                                 </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              )}
+                              <button
+                                onClick={() => setProjectToDelete(p)}
+                                className="p-1 hover:text-[#ff2a2a]"
+                                title="Delete listing"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table View (>= md) */}
+                  <div className="hidden md:block border border-line bg-surface rounded-card overflow-x-auto" data-lenis-prevent>
+                    <table className="w-full text-left text-xs font-mono min-w-[640px]">
+                      <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
+                        <tr>
+                          <th className="py-3.5 px-4 font-normal">Codebase</th>
+                          <th className="py-3.5 px-4 font-normal">Mode</th>
+                          <th className="py-3.5 px-4 font-normal">Status</th>
+                          <th className="py-3.5 px-4 font-normal">Views</th>
+                          <th className="py-3.5 px-4 font-normal">Created</th>
+                          <th className="py-3.5 px-4 font-normal text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {myProjects.map((p) => {
+                          let statusElement: React.ReactNode = <StatusBadge status="live" label="Live" />;
+                          if (p.interaction_type === 'buy') {
+                            statusElement = p.is_sold ? (
+                              <StatusBadge status="sold" label="Sold" />
+                            ) : (
+                              <StatusBadge status="live" label="For sale" />
+                            );
+                          } else if (p.interaction_type === 'adopt') {
+                            statusElement = <StatusBadge status="claimed" label="Live" />;
+                          } else if (p.interaction_type === 'collab') {
+                            statusElement = p.is_collab_filled ? (
+                              <StatusBadge status="filled" label="Filled" />
+                            ) : (
+                              <StatusBadge status="live" label="Open" />
+                            );
+                          }
+
+                          return (
+                            <tr key={p.id} className="hover:bg-surface-2/40 transition-colors">
+                              <td className="py-3 px-4 flex items-center gap-3">
+                                <div className="w-12 h-8 rounded-lg overflow-hidden bg-surface-2 shrink-0 border border-line">
+                                  {p.cover_url ? (
+                                    <img src={p.cover_url} alt={`${p.title} cover image`} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <CoverArt title={p.title} mode={p.interaction_type} className="w-full h-full" />
+                                  )}
+                                </div>
+                                <div className="truncate max-w-[180px] sm:max-w-[220px]">
+                                  <Link href={`/project/${p.id}`} className="font-sans font-medium text-sm text-white hover:underline block truncate">
+                                    {p.title}
+                                  </Link>
+                                  <span className="text-[11px] text-muted">
+                                    {p.interaction_type === 'buy'
+                                      ? formatINR(p.price_paise, { showFreeForZero: false })
+                                      : p.interaction_type === 'adopt'
+                                      ? 'Free'
+                                      : p.collab_terms || 'Collab'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <ModeBadge mode={p.interaction_type} />
+                              </td>
+                              <td className="py-3 px-4">{statusElement}</td>
+                              <td className="py-3 px-4 text-muted">
+                                <span>{p.views || 0}</span>
+                              </td>
+                              <td className="py-3 px-4 text-muted">
+                                {new Date(p.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Link href={`/project/${p.id}`}>
+                                    <button className="p-1.5 hover:text-white text-muted" title="View details">
+                                      <Eye className="w-4 h-4" />
+                                    </button>
+                                  </Link>
+                                  <Link href={`/edit/${p.id}`}>
+                                    <button className="p-1.5 hover:text-[#39ff14] text-muted" title="Edit codebase">
+                                      <Edit className="w-4 h-4" />
+                                    </button>
+                                  </Link>
+                                  {p.interaction_type === 'collab' && (
+                                    <button
+                                      onClick={() => handleToggleCollabFilled(p)}
+                                      className="p-1.5 hover:text-[#60a5fa] text-muted"
+                                      title={p.is_collab_filled ? 'Reopen position' : 'Mark filled'}
+                                    >
+                                      <Users className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setProjectToDelete(p)}
+                                    className="p-1.5 hover:text-[#ff2a2a] text-muted"
+                                    title="Delete listing"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -816,54 +903,101 @@ function DashboardContent() {
                   description="When an operative acquires one of your projects, the verified order and payment telemetry will be logged here."
                 />
               ) : (
-                <div className="border border-line bg-surface rounded-card overflow-hidden">
-                  <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
-                      <tr>
-                        <th className="py-3.5 px-4 font-normal">Project</th>
-                        <th className="py-3.5 px-4 font-normal">Buyer</th>
-                        <th className="py-3.5 px-4 font-normal">Amount</th>
-                        <th className="py-3.5 px-4 font-normal">Date</th>
-                        <th className="py-3.5 px-4 font-normal">Status</th>
-                        <th className="py-3.5 px-4 font-normal">GitHub Invite</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
-                      {salesTransactions.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-surface-2/40">
-                          <td className="py-3.5 px-4 font-medium text-white">
-                            <Link href={`/project/${tx.project_id}`} className="hover:underline">
-                              {tx.project?.title}
-                            </Link>
-                          </td>
-                          <td className="py-3.5 px-4 text-white">@{tx.buyer?.username || 'operative'}</td>
-                          <td className="py-3.5 px-4 text-[#39ff14] font-medium">
+                <>
+                  {/* Mobile Stacked Cards (< md) */}
+                  <div className="md:hidden space-y-3">
+                    {salesTransactions.map((tx) => (
+                      <div key={tx.id} className="p-4 rounded-xl bg-surface border border-line space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <Link href={`/project/${tx.project_id}`} className="font-sans font-medium text-sm text-white hover:underline truncate">
+                            {tx.project?.title}
+                          </Link>
+                          <span className="font-mono font-medium text-sm text-[#39ff14] shrink-0">
                             {formatINR(tx.amount, { showFreeForZero: false })}
-                          </td>
-                          <td className="py-3.5 px-4 text-muted">
-                            {new Date(tx.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-3.5 px-4">
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs font-mono text-muted pt-2 border-t border-line">
+                          <div>
+                            <span className="text-[10px] block uppercase text-muted/80">Buyer</span>
+                            <span className="text-white truncate block">@{tx.buyer?.username || 'operative'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] block uppercase text-muted/80">Date</span>
+                            <span>{new Date(tx.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] block uppercase text-muted/80">Status</span>
                             <StatusBadge status="live" label="Completed" />
-                          </td>
-                          <td className="py-3.5 px-4">
+                          </div>
+                          <div>
+                            <span className="text-[10px] block uppercase text-muted/80">Repo Invite</span>
                             {tx.invite_status === 'sent' && (
-                              <span className="text-[#39ff14] flex items-center gap-1">
-                                <CheckCircle className="w-3.5 h-3.5" /> Sent
+                              <span className="text-[#39ff14] flex items-center gap-1 text-[11px]">
+                                <CheckCircle className="w-3 h-3" /> Sent
                               </span>
                             )}
                             {tx.invite_status === 'failed' && (
-                              <span className="text-[#ff2a2a] flex items-center gap-1">
-                                <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                              <span className="text-[#ff2a2a] flex items-center gap-1 text-[11px]">
+                                <AlertTriangle className="w-3 h-3" /> Failed
                               </span>
                             )}
-                            {tx.invite_status === 'not_applicable' && <span className="text-muted">N/A</span>}
-                          </td>
+                            {tx.invite_status === 'not_applicable' && <span className="text-muted text-[11px]">N/A</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table (>= md) */}
+                  <div className="hidden md:block border border-line bg-surface rounded-card overflow-x-auto" data-lenis-prevent>
+                    <table className="w-full text-left text-xs font-mono min-w-[640px]">
+                      <thead className="bg-surface-2/60 border-b border-line uppercase text-muted">
+                        <tr>
+                          <th className="py-3.5 px-4 font-normal">Project</th>
+                          <th className="py-3.5 px-4 font-normal">Buyer</th>
+                          <th className="py-3.5 px-4 font-normal">Amount</th>
+                          <th className="py-3.5 px-4 font-normal">Date</th>
+                          <th className="py-3.5 px-4 font-normal">Status</th>
+                          <th className="py-3.5 px-4 font-normal">GitHub Invite</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {salesTransactions.map((tx) => (
+                          <tr key={tx.id} className="hover:bg-surface-2/40">
+                            <td className="py-3.5 px-4 font-medium text-white">
+                              <Link href={`/project/${tx.project_id}`} className="hover:underline">
+                                {tx.project?.title}
+                              </Link>
+                            </td>
+                            <td className="py-3.5 px-4 text-white">@{tx.buyer?.username || 'operative'}</td>
+                            <td className="py-3.5 px-4 text-[#39ff14] font-medium">
+                              {formatINR(tx.amount, { showFreeForZero: false })}
+                            </td>
+                            <td className="py-3.5 px-4 text-muted">
+                              {new Date(tx.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <StatusBadge status="live" label="Completed" />
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {tx.invite_status === 'sent' && (
+                                <span className="text-[#39ff14] flex items-center gap-1">
+                                  <CheckCircle className="w-3.5 h-3.5" /> Sent
+                                </span>
+                              )}
+                              {tx.invite_status === 'failed' && (
+                                <span className="text-[#ff2a2a] flex items-center gap-1">
+                                  <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                                </span>
+                              )}
+                              {tx.invite_status === 'not_applicable' && <span className="text-muted">N/A</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -1088,25 +1222,102 @@ function DashboardContent() {
         </main>
       </div>
 
-      {/* MOBILE BOTTOM TAB BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-header bg-bg/95 border-t border-line px-2 py-2 flex items-center justify-around">
-        {TABS.map((tab) => {
+      {/* MOBILE BOTTOM TAB BAR (< lg) */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-header bg-bg/95 backdrop-blur-md border-t border-line px-2 py-1.5 safe-pb flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.6)]">
+        {TABS.slice(0, 4).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => switchTab(tab.id)}
-              className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-                isActive ? 'text-white' : 'text-muted'
+              onClick={() => {
+                switchTab(tab.id);
+                setIsMoreSheetOpen(false);
+              }}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 transition-colors relative min-h-[44px] ${
+                isActive ? 'text-white font-medium' : 'text-muted hover:text-white'
               }`}
             >
               <Icon className="w-4 h-4" />
               <span className="font-mono text-[9px] uppercase tracking-normal">{tab.label}</span>
+              {isActive && (
+                <span className="w-1 h-1 rounded-full bg-white absolute bottom-0.5" />
+              )}
             </button>
           );
         })}
+
+        {/* 5th Tab: "More" button */}
+        {(() => {
+          const isMoreActive = ['collabs', 'messages', 'settings'].includes(activeTab);
+          return (
+            <button
+              onClick={() => setIsMoreSheetOpen(!isMoreSheetOpen)}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 transition-colors relative min-h-[44px] ${
+                isMoreActive || isMoreSheetOpen ? 'text-white font-medium' : 'text-muted hover:text-white'
+              }`}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              <span className="font-mono text-[9px] uppercase tracking-normal">More</span>
+              {isMoreActive && (
+                <span className="w-1 h-1 rounded-full bg-brand-red absolute bottom-0.5" />
+              )}
+            </button>
+          );
+        })()}
       </div>
+
+      {/* Mobile "More" Bottom Sheet */}
+      {isMoreSheetOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 z-modal bg-black/80 backdrop-blur-xs flex items-end animate-in fade-in duration-150"
+          onClick={() => setIsMoreSheetOpen(false)}
+        >
+          <div 
+            className="w-full bg-surface border-t border-line rounded-t-3xl p-5 space-y-3 safe-pb shadow-2xl animate-in slide-in-from-bottom duration-200"
+            onClick={(e) => e.stopPropagation()}
+            data-lenis-prevent
+          >
+            <div className="w-12 h-1 bg-line rounded-full mx-auto -mt-1 mb-2 shrink-0" />
+            <div className="pb-2 border-b border-line flex items-center justify-between">
+              <span className="font-mono text-xs uppercase tracking-widest text-muted">Additional console tabs</span>
+              <button 
+                onClick={() => setIsMoreSheetOpen(false)}
+                className="p-1 text-muted hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              {TABS.slice(4).map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      switchTab(tab.id);
+                      setIsMoreSheetOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors font-sans text-sm ${
+                      isActive
+                        ? 'bg-white text-black font-semibold'
+                        : 'bg-surface-2 text-white hover:bg-surface-3'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-4 h-4" />
+                      <span>{tab.label}</span>
+                    </div>
+                    {isActive && <CheckCircle className="w-4 h-4 text-black" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DELETE CONFIRMATION DIALOG */}
       {projectToDelete && (
@@ -1130,7 +1341,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-bg" />}>
+    <Suspense fallback={<div className="min-h-dvh bg-bg" />}>
       <DashboardContent />
     </Suspense>
   );

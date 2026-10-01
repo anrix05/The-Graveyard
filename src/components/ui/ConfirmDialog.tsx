@@ -35,6 +35,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       setTypedText('');
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
     }
   }, [isOpen]);
 
@@ -43,10 +48,16 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const isMatchValid = !requireMatchText || typedText.trim() === requireMatchText.trim();
 
   return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md bg-surface rounded-modal border border-line p-6 shadow-2xl flex flex-col gap-4">
+    <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+      <div 
+        className="w-full max-w-md bg-surface rounded-t-[24px] sm:rounded-modal border border-line p-5 sm:p-6 shadow-2xl flex flex-col gap-4 safe-pb" 
+        data-lenis-prevent
+      >
+        {/* Grab handle on mobile */}
+        <div className="sm:hidden w-12 h-1 bg-line rounded-full mx-auto -mt-1 mb-1 shrink-0" />
+
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div
               className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
                 isDanger ? 'border-[#ff2a2a]/30 bg-[#ff2a2a]/10 text-[#ff2a2a]' : 'border-line bg-surface-2 text-white'
@@ -54,19 +65,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             >
               <AlertTriangle className="w-4 h-4" />
             </div>
-            <h3 className="font-display font-semibold text-lg text-white">{title}</h3>
+            <h3 className="font-display font-semibold text-base sm:text-lg text-white truncate">{title}</h3>
           </div>
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="text-muted hover:text-white transition-colors p-1"
+            className="text-muted hover:text-white transition-colors p-1.5 shrink-0"
             aria-label="Close dialog"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <p className="font-sans text-sm text-muted leading-relaxed">{description}</p>
+        <p className="font-sans text-sm text-muted leading-relaxed break-anywhere">{description}</p>
 
         {requireMatchText && (
           <div className="space-y-2 mt-1">
@@ -83,8 +94,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 mt-2 pt-4 border-t border-line">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={isLoading}>
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 mt-2 pt-4 border-t border-line">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={isLoading} className="w-full sm:w-auto">
             {cancelText}
           </Button>
           <Button
@@ -93,6 +104,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onConfirm}
             disabled={!isMatchValid || isLoading}
             isLoading={isLoading}
+            className="w-full sm:w-auto justify-center"
           >
             {confirmText}
           </Button>

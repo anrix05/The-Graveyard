@@ -252,19 +252,35 @@ export default function IntroOverlay() {
         const skullRect = introSkull.getBoundingClientRect();
         const targetRect = targetLogo.getBoundingClientRect();
 
-        const dx = targetRect.left + targetRect.width / 2 - (skullRect.left + skullRect.width / 2);
-        const dy = targetRect.top + targetRect.height / 2 - (skullRect.top + skullRect.height / 2);
-        const scaleRatio = targetRect.width / (skullRect.width || 1);
+        // Ensure target is actually visible and rendered on screen
+        const isTargetVisible =
+          targetRect.width > 8 &&
+          targetRect.height > 8 &&
+          targetRect.top >= -20 &&
+          targetRect.top <= window.innerHeight;
 
-        // Smooth flight FLIP
-        introSkull.style.willChange = 'transform';
-        introSkull.style.transition = 'transform 700ms cubic-bezier(0.65, 0, 0.35, 1)';
-        introSkull.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleRatio})`;
+        if (isTargetVisible) {
+          const dx = targetRect.left + targetRect.width / 2 - (skullRect.left + skullRect.width / 2);
+          const dy = targetRect.top + targetRect.height / 2 - (skullRect.top + skullRect.height / 2);
+          const scaleRatio = targetRect.width / (skullRect.width || 1);
 
-        // Fade overlay background to transparent
-        overlay.style.transition = 'background-color 600ms ease-out, opacity 600ms ease-out';
-        overlay.style.backgroundColor = 'transparent';
-        overlay.style.opacity = '0';
+          // Smooth flight FLIP
+          introSkull.style.willChange = 'transform';
+          introSkull.style.transition = 'transform 700ms cubic-bezier(0.65, 0, 0.35, 1)';
+          introSkull.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleRatio})`;
+
+          // Fade overlay background to transparent
+          overlay.style.transition = 'background-color 600ms ease-out, opacity 600ms ease-out';
+          overlay.style.backgroundColor = 'transparent';
+          overlay.style.opacity = '0';
+        } else {
+          // Fallback exit if logo is hidden or outside viewport
+          introSkull.style.transition = 'transform 600ms ease, opacity 600ms ease';
+          introSkull.style.transform = 'scale(0.85)';
+          introSkull.style.opacity = '0';
+          overlay.style.transition = 'opacity 600ms ease';
+          overlay.style.opacity = '0';
+        }
       } else if (introSkull && overlay) {
         // Fallback exit
         introSkull.style.transition = 'transform 600ms ease, opacity 600ms ease';
@@ -303,7 +319,7 @@ export default function IntroOverlay() {
       role="presentation"
       aria-hidden="true"
       onClick={handleUserSkip}
-      className="fixed inset-0 z-[100] cursor-pointer select-none bg-[#050505] overflow-hidden"
+      className="fixed inset-0 z-[100] cursor-pointer select-none bg-[#050505] overflow-hidden w-full h-[100dvh]"
     >
       {/* Soft Center Vignette (6% subtle red ambient center glow, no canvas, no blur filters) */}
       <div
@@ -335,7 +351,7 @@ export default function IntroOverlay() {
       )}
 
       {/* Main Assembly Skull Hero Container */}
-      <div className="relative z-10 w-full h-full flex items-center justify-center pointer-events-none">
+      <div className="relative z-10 w-full h-full flex items-center justify-center pointer-events-none safe-p">
         <div
           ref={skullContainerRef}
           className="relative flex items-center justify-center text-[#4a4a4a]"
@@ -413,9 +429,9 @@ export default function IntroOverlay() {
         </div>
       </div>
 
-      {/* Skip Hint (Appears after 600ms bottom-right) */}
+      {/* Skip Hint (Appears after 600ms bottom-right with safe area margin) */}
       <div
-        className={`absolute bottom-6 right-8 z-20 pointer-events-auto transition-opacity duration-300 font-mono text-xs text-muted/70 hover:text-white uppercase tracking-wider ${
+        className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(2rem+env(safe-area-inset-right,0px))] z-20 pointer-events-auto transition-opacity duration-300 font-mono text-xs text-muted/70 hover:text-white uppercase tracking-wider ${
           showSkipHint ? 'opacity-100' : 'opacity-0'
         }`}
       >

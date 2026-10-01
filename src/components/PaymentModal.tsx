@@ -28,7 +28,7 @@ interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project;
-  onSuccess?: () => void;
+  onSuccess?: (transactionId?: string) => void;
 }
 
 type CheckoutStep =
@@ -65,6 +65,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setGithubUsername(user.username);
     }
   }, [user, githubUsername]);
+
+  // Lock background scroll when open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -211,7 +221,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             setTransactionId(verifyData.transactionId || null);
             setStep('success');
             toast.success('Purchase confirmed! Asset access unlocked.');
-            onSuccess?.();
+            onSuccess?.(verifyData.transactionId);
           } catch (verifyErr: unknown) {
             const msg = verifyErr instanceof Error ? verifyErr.message : 'Verification failed';
             setErrorMessage(msg);
@@ -288,17 +298,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-lg rounded-[24px] bg-surface border border-line shadow-2xl overflow-hidden flex flex-col" data-lenis-prevent>
+    <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div 
+        className="w-full max-w-lg rounded-t-[24px] sm:rounded-[24px] bg-surface border border-line shadow-2xl max-h-[92dvh] sm:max-h-[90dvh] flex flex-col safe-pb overflow-hidden" 
+        data-lenis-prevent
+      >
+        {/* Grab handle on mobile */}
+        <div className="sm:hidden w-12 h-1.5 bg-line rounded-full mx-auto my-2.5 shrink-0" />
+
         {/* Top Bar: Slim TEST MODE pill */}
-        <div className="px-6 py-4 border-b border-line flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber/10 border border-amber/30 text-amber text-xs font-mono font-medium">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>TEST MODE: Zero real money charged</span>
+        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-line flex items-center justify-between shrink-0">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber/10 border border-amber/30 text-amber text-xs font-mono font-medium max-w-[85%] truncate">
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">TEST MODE: Zero money charged</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-muted hover:text-white transition-colors"
+            className="p-1.5 rounded-full text-muted hover:text-white transition-colors"
             aria-label="Close checkout"
           >
             <X className="w-5 h-5" />
@@ -306,12 +322,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         </div>
 
         {/* Test Helper Chips */}
-        <div className="bg-surface-2 px-6 py-3 border-b border-line flex flex-wrap items-center gap-2 text-xs font-mono">
-          <span className="text-muted">Test data:</span>
+        <div className="bg-surface-2 px-5 sm:px-6 py-2.5 sm:py-3 border-b border-line flex flex-wrap items-center gap-2 text-xs font-mono shrink-0">
+          <span className="text-muted text-[11px] sm:text-xs">Test data:</span>
           <button
             type="button"
             onClick={() => copyToClipboard('4111 1111 1111 1111', 'Card')}
-            className="px-2.5 py-1 rounded-full bg-surface border border-line hover:border-white/30 text-fg flex items-center gap-1.5 transition-colors"
+            className="px-2.5 py-1 rounded-full bg-surface border border-line hover:border-white/30 text-fg flex items-center gap-1.5 transition-colors text-[11px] sm:text-xs"
           >
             <CreditCard className="w-3 h-3 text-neon-green" />
             <span>Card: 4111...1111</span>
@@ -320,7 +336,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <button
             type="button"
             onClick={() => copyToClipboard('success@razorpay', 'UPI')}
-            className="px-2.5 py-1 rounded-full bg-surface border border-line hover:border-white/30 text-fg flex items-center gap-1.5 transition-colors"
+            className="px-2.5 py-1 rounded-full bg-surface border border-line hover:border-white/30 text-fg flex items-center gap-1.5 transition-colors text-[11px] sm:text-xs"
           >
             <Smartphone className="w-3 h-3 text-blue-accent" />
             <span>UPI: success@razorpay</span>
@@ -329,15 +345,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         </div>
 
         {/* Step Body */}
-        <div className="p-6 sm:p-7">
+        <div className="p-5 sm:p-7 overflow-y-auto overscroll-contain flex-1">
               {step === 'summary' && (
                 <div className="space-y-5">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="font-display text-xl font-bold text-white">{project.title}</h2>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-display text-lg sm:text-xl font-bold text-white break-anywhere">{project.title}</h2>
                       <p className="font-sans text-xs text-[#9ca3af] mt-1">Exclusive repository transfer</p>
                     </div>
-                    <div className="font-mono text-2xl font-bold text-[#39ff14] shrink-0">
+                    <div className="font-mono text-xl sm:text-2xl font-bold text-[#39ff14] shrink-0 tabular-nums">
                       {formatINR(project.price_paise, { showFreeForZero: false })}
                     </div>
                   </div>
@@ -379,9 +395,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         }}
                         placeholder="e.g. octocat"
                         error={Boolean(githubError)}
+                        aria-invalid={Boolean(githubError)}
+                        aria-describedby={githubError ? 'github-username-error' : undefined}
                       />
                       {githubError && (
-                        <p className="font-mono text-xs text-[#ff2a2a] flex items-center gap-1">
+                        <p id="github-username-error" role="alert" aria-live="polite" className="font-mono text-xs text-[#ff2a2a] flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                           <span>{githubError}</span>
                         </p>
@@ -389,8 +407,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-[#2d2d2d]">
-                    <Button variant="ghost" size="sm" onClick={onClose}>
+                  <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-[#2d2d2d]">
+                    <Button variant="ghost" size="sm" onClick={onClose} className="w-full sm:w-auto">
                       Cancel
                     </Button>
                     <Button
@@ -399,6 +417,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       size="md"
                       onClick={handleStartPayment}
                       isLoading={isValidatingUser}
+                      className="w-full sm:w-auto justify-center"
                     >
                       Proceed to Payment ({formatINR(project.price_paise, { showFreeForZero: false })})
                     </Button>
@@ -528,11 +547,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <Button variant="ghost" size="sm" onClick={onClose}>
                       Close
                     </Button>
-                    <Link href="/dashboard?tab=vault" onClick={onClose}>
-                      <Button variant="primary" mode="buy" size="sm">
-                        View in Vault
-                      </Button>
-                    </Link>
+                    {transactionId ? (
+                      <Link href={`/orders/${transactionId}`} onClick={onClose}>
+                        <Button variant="primary" mode="buy" size="sm">
+                          View Order Receipt
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Link href="/dashboard?tab=vault" onClick={onClose}>
+                        <Button variant="primary" mode="buy" size="sm">
+                          View in Vault
+                        </Button>
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}

@@ -103,60 +103,83 @@ export const NotificationBell: React.FC = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface border border-line shadow-2xl rounded-2xl z-dropdown animate-in fade-in duration-100 overflow-hidden">
-          <div className="p-3.5 border-b border-line flex items-center justify-between">
-            <span className="font-sans text-sm font-semibold text-white">Transmissions</span>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllRead}
-                className="text-xs font-mono text-muted hover:text-white flex items-center gap-1"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                <span>Mark all read</span>
-              </button>
-            )}
-          </div>
+        <>
+          {/* Mobile backdrop */}
+          <div 
+            className="sm:hidden fixed inset-0 z-modal bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
+            onClick={() => setIsOpen(false)}
+          />
 
-          <div className="max-h-80 overflow-y-auto divide-y divide-line">
-            {notifications.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted">No new transmissions.</div>
-            ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`p-3.5 text-xs transition-colors hover:bg-surface-2 ${
-                    !n.read_at ? 'bg-surface-2/60' : ''
-                  }`}
+          <div 
+            className="fixed inset-x-0 bottom-0 z-modal sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 w-full sm:w-96 max-h-[85dvh] sm:max-h-[500px] bg-surface border border-line shadow-2xl rounded-t-[24px] sm:rounded-2xl flex flex-col safe-pb overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-top-2 duration-200"
+            data-lenis-prevent
+          >
+            {/* Grab handle on mobile */}
+            <div className="sm:hidden w-12 h-1 bg-line rounded-full mx-auto my-2 shrink-0" />
+
+            <div className="p-3.5 sm:p-4 border-b border-line flex items-center justify-between shrink-0 bg-surface-2">
+              <span className="font-sans text-sm font-semibold text-white">Transmissions</span>
+              <div className="flex items-center gap-3">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="text-xs font-mono text-muted hover:text-white flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    <span>Mark all read</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="sm:hidden p-1 text-muted hover:text-white"
+                  aria-label="Close"
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 p-1 rounded bg-black/40 border border-white/5 shrink-0">
-                      {getIcon(n.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="font-semibold text-white truncate">{n.title}</span>
-                        <span className="text-[10px] font-mono text-[#9ca3af] shrink-0">
-                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-line overscroll-contain">
+              {notifications.length === 0 ? (
+                <div className="p-8 text-center text-xs text-muted">No new transmissions.</div>
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`p-3.5 sm:p-4 text-xs transition-colors hover:bg-surface-2 ${
+                      !n.read_at ? 'bg-surface-2/60' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5 p-1.5 rounded bg-black/40 border border-white/5 shrink-0">
+                        {getIcon(n.type)}
                       </div>
-                      <p className="text-[#9ca3af] line-clamp-2 leading-relaxed">{n.body}</p>
-                      {n.link && (
-                        <Link
-                          href={n.link}
-                          onClick={() => setIsOpen(false)}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono text-[#60a5fa] hover:underline mt-1.5"
-                        >
-                          <span>Inspect</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="font-semibold text-white truncate break-anywhere">{n.title}</span>
+                          <span className="text-[10px] font-mono text-[#9ca3af] shrink-0">
+                            {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-[#9ca3af] line-clamp-2 leading-relaxed break-anywhere">{n.body}</p>
+                        {n.link && (
+                          <Link
+                            href={n.link}
+                            onClick={() => setIsOpen(false)}
+                            className="inline-flex items-center gap-1 text-[11px] font-mono text-[#60a5fa] hover:underline mt-1.5"
+                          >
+                            <span>Inspect</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

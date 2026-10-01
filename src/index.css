@@ -36,6 +36,8 @@
     background-color: var(--bg);
     color: var(--fg);
     text-rendering: optimizeLegibility;
+    scrollbar-gutter: stable;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -44,7 +46,7 @@
     font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 16px;
     line-height: 1.6;
-    min-height: 100vh;
+    min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     position: relative;
   }
@@ -80,12 +82,52 @@
     font-size: 108%;
   }
 
-  /* Fluid Display Headline: fits 2 lines on desktop */
+  /* Fluid Display Headline: fits 2 lines on desktop, scales to 4K ceiling */
   .text-hero-display {
-    font-size: clamp(2.75rem, 7.2vw, 6.75rem);
+    font-size: clamp(2.5rem, 2rem + 4.2vw, 7.5rem);
     line-height: 0.98;
     letter-spacing: -0.035em;
     text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+
+  .text-fluid-h1 {
+    font-size: clamp(2rem, 1.5rem + 2.4vw, 4.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+
+  .text-fluid-h2 {
+    font-size: clamp(1.5rem, 1.2rem + 1.4vw, 3rem);
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+
+  .text-fluid-body {
+    font-size: clamp(1rem, 0.95rem + 0.2vw, 1.125rem);
+    line-height: 1.6;
+  }
+
+  /* Fluid Section Spacing */
+  .section-spacing {
+    padding-top: clamp(3rem, 8vw, 8rem);
+    padding-bottom: clamp(3rem, 8vw, 8rem);
+  }
+
+  /* Maximum line length for reading measure */
+  .prose-measure {
+    max-width: 68ch;
+  }
+
+  /* Text break-anywhere safety */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: normal;
+    hyphens: auto;
   }
 
   /* Tabular numbers for telemetry, prices, and metrics */
@@ -108,7 +150,11 @@
     border-radius: inherit;
   }
 
-  /* Thin Minimal Scrollbar */
+  /* Slim Styled Scrollbar for internal scroll containers */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a2e var(--bg);
+  }
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -292,4 +338,206 @@ html[data-intro="play"] [data-intro-target="logo"] {
 .animate-intro-drift {
   animation: introDrift 20s ease-in-out infinite alternate;
   will-change: transform;
+}
+
+/* =========================================================================
+   AUTH PAGES & FORMS (v2.4)
+   ========================================================================= */
+
+/* Autofill overrides for dark theme */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #17171a inset !important;
+  -webkit-text-fill-color: #ededed !important;
+  caret-color: #ededed !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Accessible micro error shake (max 2px, 150ms) */
+@keyframes auth-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+.animate-auth-shake {
+  animation: auth-shake 150ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-auth-shake {
+    animation: none !important;
+  }
+}
+
+/* High-tier drifting glyphs for brand panel (no blur, no canvas) */
+@keyframes glyphDrift1 {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(4deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+@keyframes glyphDrift2 {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(10px) rotate(-3deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+html[data-perf="high"] .animate-glyph-drift-1 {
+  animation: glyphDrift1 14s ease-in-out infinite;
+}
+
+html[data-perf="high"] .animate-glyph-drift-2 {
+  animation: glyphDrift2 18s ease-in-out infinite;
+}
+
+/* v2.7 Mobile & CSS Hero Motion (transform & opacity only, hardware accelerated) */
+@keyframes heroGlowDrift {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.20;
+  }
+  50% {
+    transform: translate(-47%, -53%) scale(1.12);
+    opacity: 0.30;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.20;
+  }
+}
+
+@keyframes heroGlyphFloat {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.05;
+  }
+  25% {
+    opacity: 0.25;
+  }
+  50% {
+    transform: translate3d(10px, -32px, 0) rotate(5deg);
+    opacity: 0.30;
+  }
+  75% {
+    opacity: 0.20;
+  }
+  100% {
+    transform: translate3d(-4px, -64px, 0) rotate(-4deg);
+    opacity: 0.05;
+  }
+}
+
+.animate-hero-glow-drift {
+  animation: heroGlowDrift 18s ease-in-out infinite;
+}
+
+.animate-hero-glyph-float {
+  animation: heroGlyphFloat 20s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-glow-drift,
+  .animate-hero-glyph-float {
+    animation: none !important;
+  }
+}
+
+/* =========================================================================
+   V2.5 DISPLAY-FRIENDLY & RESPONSIVE POLISH (Phones to 4K, any zoom)
+   ========================================================================= */
+
+/* Safe area inset utilities */
+.safe-pt {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+}
+.safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+.safe-pl {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+}
+.safe-pr {
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/* Touch targets for coarse pointers (minimum 44x44px hit area) */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Short height screens (e.g. landscape phones, keyboard open) */
+@media (max-height: 500px) {
+  .landscape-short-auto {
+    min-height: auto !important;
+    height: auto !important;
+  }
+  .landscape-compact-nav {
+    height: 52px !important;
+  }
+}
+
+/* Enhanced contrast preference (prefers-contrast: more) */
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgba(255, 255, 255, 0.35);
+    --border: rgba(255, 255, 255, 0.35);
+    --muted: #e5e7eb;
+  }
+  * {
+    border-color: rgba(255, 255, 255, 0.35) !important;
+  }
+  .text-muted {
+    color: #e5e7eb !important;
+  }
+  .border-line {
+    border-color: rgba(255, 255, 255, 0.4) !important;
+  }
+}
+
+/* Forced Colors Mode (Windows High Contrast) */
+@media (forced-colors: active) {
+  :root {
+    --focus: Highlight;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 3px !important;
+  }
+  button, input, select, textarea, .card-surface {
+    border: 1px solid ButtonText !important;
+  }
+  .bg-white, .btn-primary {
+    outline: 2px solid ButtonText !important;
+  }
+  svg {
+    forced-color-adjust: auto;
+  }
+}
+
+/* Mobile Toast Positioning: bottom-center on mobile above sticky bottom bars and safe area */
+@media (max-width: 639px) {
+  [data-sonner-toaster] {
+    left: 50% !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 76px) !important;
+    transform: translateX(-50%) !important;
+    width: min(calc(100vw - 24px), 400px) !important;
+  }
+  [data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+  }
+}
+
+/* Touch targets: ensure 44px min touch target on coarse pointers */
+@media (pointer: coarse) {
+  button:not([class*="h-"]), a:not([class*="h-"]), input, select {
+    min-height: 44px;
+  }
 }

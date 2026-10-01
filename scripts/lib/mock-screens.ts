@@ -221,7 +221,7 @@ function generateSvgWireframe(options: MockScreenOptions): string {
 }
 
 /**
- * Returns a 1280x800 PNG Buffer rendered from procedurally generated SVG.
+ * Returns a 1280x800 WebP Buffer rendered from procedurally generated SVG.
  */
 export async function generateScreenshotBuffer(
   mode: 'buy' | 'adopt' | 'collab',
@@ -229,6 +229,6 @@ export async function generateScreenshotBuffer(
 ): Promise<Buffer> {
   const svg = generateSvgWireframe({ mode, variantIndex });
   return await sharp(Buffer.from(svg))
-    .png({ quality: 90 })
+    .webp({ quality: 80 })
     .toBuffer();
 }

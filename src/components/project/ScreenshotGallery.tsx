@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { ChevronLeft, ChevronRight, X, Maximize2 } from 'lucide-react';
 
 interface ScreenshotGalleryProps {
@@ -15,6 +15,7 @@ export default function ScreenshotGallery({
 }: ScreenshotGalleryProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
 
   const count = screenshots.length;
 
@@ -25,6 +26,22 @@ export default function ScreenshotGallery({
   const handleNext = useCallback(() => {
     setActiveIdx((prev) => (prev === count - 1 ? 0 : prev + 1));
   }, [count]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart === null) return;
+    const touchEnd = e.changedTouches[0].clientX;
+    const diff = touchStart - touchEnd;
+    if (diff > 50) {
+      handleNext();
+    } else if (diff < -50) {
+      handlePrev();
+    }
+    setTouchStart(null);
+  };
 
   // Keyboard navigation for lightbox
   useEffect(() => {
@@ -58,9 +75,9 @@ export default function ScreenshotGallery({
         onClick={() => setIsLightboxOpen(true)}
         className="group relative aspect-[16/10] w-full overflow-hidden rounded-card bg-surface border border-line cursor-zoom-in"
       >
-        <Image
+        <Img
           src={screenshots[activeIdx]}
-          alt={`${title} screenshot ${activeIdx + 1}`}
+          alt={`${title} screenshot ${activeIdx + 1} of ${count}`}
           fill
           priority
           unoptimized
@@ -88,15 +105,16 @@ export default function ScreenshotGallery({
               key={shot + idx}
               type="button"
               onClick={() => setActiveIdx(idx)}
+              aria-label={`View screenshot ${idx + 1} of ${count}`}
               className={`relative aspect-[16/10] w-24 sm:w-28 rounded-xl overflow-hidden border transition-all shrink-0 ${
                 activeIdx === idx
                   ? 'border-white ring-2 ring-white/20'
                   : 'border-line opacity-60 hover:opacity-100'
               }`}
             >
-              <Image
+              <Img
                 src={shot}
-                alt={`${title} thumb ${idx + 1}`}
+                alt={`${title} screenshot ${idx + 1} of ${count}`}
                 fill
                 unoptimized
                 sizes="120px"
@@ -112,8 +130,11 @@ export default function ScreenshotGallery({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 sm:p-8 animate-in fade-in duration-150"
+          aria-label={`${title} screenshot viewer`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 sm:p-8 safe-pt safe-pb animate-in fade-in duration-150"
           onClick={() => setIsLightboxOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
           {/* Close button */}
           <button
@@ -135,9 +156,9 @@ export default function ScreenshotGallery({
             className="relative w-full max-w-5xl aspect-[16/10] max-h-[85vh] rounded-2xl overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <Image
+            <Img
               src={screenshots[activeIdx]}
-              alt={`${title} enlarged screenshot ${activeIdx + 1}`}
+              alt={`${title} screenshot ${activeIdx + 1} of ${count}`}
               fill
               unoptimized
               sizes="90vw"

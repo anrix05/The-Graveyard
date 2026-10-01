@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams, notFound } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
+import { track } from '@/lib/analytics';
 import {
   ArrowLeft,
   Calendar,
@@ -110,8 +111,8 @@ export default function ProjectDetailPage() {
           .single();
 
         if (pErr || !pData) {
-          toast.error('Project not found.');
           setIsLoading(false);
+          notFound();
           return;
         }
 
@@ -144,6 +145,10 @@ export default function ProjectDetailPage() {
         };
 
         setProject(normalizedProject);
+        track('view_project', {
+          project_id: normalizedProject.id,
+          mode: normalizedProject.interaction_type,
+        });
 
         // 2. Fetch Seller Profile & listing count
         if (pData.seller_id) {
@@ -264,6 +269,7 @@ export default function ProjectDetailPage() {
     const toastId = toast.loading('Claiming open source fork...');
 
     try {
+      track('click_cta', { action: 'claim', project_id: projectId });
       const res = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -274,6 +280,10 @@ export default function ProjectDetailPage() {
       if (!res.ok) {
         throw new Error(data.error?.message || 'Claim failed');
       }
+
+      track('claim_completed', {
+        project_id: projectId,
+      });
 
       toast.success(
         data.alreadyClaimed
@@ -288,6 +298,12 @@ export default function ProjectDetailPage() {
         repoUrl: data.repoUrl,
         inviteStatus: data.inviteStatus,
       });
+
+      if (data.transactionId) {
+        setTimeout(() => {
+          router.push(`/orders/${data.transactionId}`);
+        }, 1200);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Claim failed';
       toast.error(message, { id: toastId });
@@ -375,7 +391,7 @@ export default function ProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col">
+      <div className="min-h-dvh bg-bg flex flex-col">
         <Header />
         <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full animate-pulse">
           <div className="h-6 w-32 bg-surface-2 rounded-full mb-8" />
@@ -394,32 +410,17 @@ export default function ProjectDetailPage() {
   }
 
   if (!project) {
-    return (
-      <div className="min-h-screen bg-bg flex flex-col">
-        <Header />
-        <main className="flex-1 max-w-4xl mx-auto px-4 py-24 text-center">
-          <h1 className="text-3xl font-display font-semibold text-white mb-4">
-            Codebase Not Found
-          </h1>
-          <p className="font-sans text-muted mb-8">
-            This repository may have been permanently purged or does not exist.
-          </p>
-          <Button variant="primary" onClick={() => router.push('/')}>
-            Back to Marketplace
-          </Button>
-        </main>
-        <Footer />
-      </div>
-    );
+    notFound();
+    return null;
   }
 
   const effectiveCover = project.cover_url || (project.screenshots && project.screenshots.length > 0 ? project.screenshots[0] : null);
 
   return (
-    <div className="min-h-screen bg-bg text-fg flex flex-col selection:bg-brand-red selection:text-white">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col selection:bg-brand-red selection:text-white">
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full">
+      <main id="main" tabIndex={-1} className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 pb-28 lg:pb-16 w-full outline-none">
         {/* Back Link */}
         <Link
           href="/"
@@ -443,9 +444,9 @@ export default function ProjectDetailPage() {
                 className="relative aspect-[16/10] w-full overflow-hidden rounded-card bg-surface border border-line shadow-2xl"
               >
                 {effectiveCover ? (
-                  <Image
+                  <Img
                     src={effectiveCover}
-                    alt={project.title}
+                    alt={`${project.title} cover image`}
                     fill
                     priority
                     unoptimized
@@ -527,6 +528,14 @@ export default function ProjectDetailPage() {
                     <span>{project.license}</span>
                   </div>
                 )}
+
+                <Link
+                  href={`/contact?listing=${project.id}`}
+                  className="inline-flex items-center gap-1.5 text-muted hover:text-brand-red transition-colors"
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Report this listing</span>
+                </Link>
 
                 {project.demo_url && (
                   <a
@@ -790,7 +799,7 @@ export default function ProjectDetailPage() {
           {/* ========================================================= */}
           {/* RIGHT COLUMN: STICKY MODE-SPECIFIC ACTION PANEL */}
           {/* ========================================================= */}
-          <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
+          <div className="lg:col-span-4 lg:sticky lg:top-[84px] space-y-6">
             <div className="rounded-card bg-surface border border-line p-6 shadow-xl space-y-6">
               {/* Header: Mode & Price */}
               <div className="flex items-start justify-between gap-4">
@@ -888,6 +897,7 @@ export default function ProjectDetailPage() {
                     mode="buy"
                     className="w-full !h-12 !text-base"
                     onClick={() => {
+                      track('click_cta', { action: 'buy', project_id: project.id });
                       if (requireAuthOrRedirect('buy')) {
                         setIsBuyModalOpen(true);
                       }
@@ -911,6 +921,7 @@ export default function ProjectDetailPage() {
                     mode="collab"
                     className="w-full !h-12 !text-base"
                     onClick={() => {
+                      track('click_cta', { action: 'apply', project_id: project.id });
                       if (requireAuthOrRedirect('apply')) {
                         setIsCollabModalOpen(true);
                       }
@@ -1005,7 +1016,10 @@ export default function ProjectDetailPage() {
                     variant="ghost"
                     size="sm"
                     className="w-full text-xs text-muted hover:text-white"
-                    onClick={() => router.push(`/dashboard?tab=messages&to=${project.seller_id}`)}
+                    onClick={() => {
+                      track('click_cta', { action: 'message', project_id: project.id });
+                      router.push(`/dashboard?tab=messages&to=${project.seller_id}`);
+                    }}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     <span>Send Message to Seller</span>
@@ -1030,46 +1044,56 @@ export default function ProjectDetailPage() {
         </div>
       </main>
 
-      {/* Mobile Sticky Bottom Action Bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0b]/95 border-t border-line p-4 flex items-center justify-between gap-4">
-        <div>
-          <span className="font-mono text-xs text-muted block">
-            {project.interaction_type === 'buy' ? 'Price' : 'Mode'}
-          </span>
-          <span className="font-mono text-lg font-bold text-white">
-            {project.interaction_type === 'buy'
-              ? formatINR(project.price_paise, { showFreeForZero: false })
-              : project.interaction_type === 'adopt'
-              ? 'Free'
-              : 'Collab'}
-          </span>
-        </div>
+      {/* Mobile Sticky Bottom Action Bar (< lg) */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0a0a0b]/95 backdrop-blur-md border-t border-line py-3 px-4 sm:px-6 safe-pb shadow-[0_-4px_20px_rgba(0,0,0,0.6)]">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <span className="font-mono text-[10px] sm:text-xs text-muted block uppercase tracking-wider">
+              {project.interaction_type === 'buy' ? 'Acquisition' : 'Access'}
+            </span>
+            <span className="font-mono text-base sm:text-lg font-bold text-white tabular-nums truncate block">
+              {project.interaction_type === 'buy'
+                ? formatINR(project.price_paise, { showFreeForZero: false })
+                : project.interaction_type === 'adopt'
+                ? 'Free'
+                : 'Collab'}
+            </span>
+          </div>
 
-        {isOwner ? (
-          <Button variant="secondary" size="sm" onClick={() => router.push(`/edit/${project.id}`)}>
-            Edit Listing
-          </Button>
-        ) : isEntitled ? (
-          <Button variant="primary" mode="buy" size="sm" onClick={handleDownload} disabled={isDownloading}>
-            Download ZIP
-          </Button>
-        ) : project.is_sold || project.is_collab_filled ? (
-          <Button variant="secondary" size="sm" disabled>
-            Closed
-          </Button>
-        ) : project.interaction_type === 'buy' ? (
-          <Button variant="primary" mode="buy" size="sm" onClick={() => requireAuthOrRedirect('buy') && setIsBuyModalOpen(true)}>
-            Acquire
-          </Button>
-        ) : project.interaction_type === 'adopt' ? (
-          <Button variant="primary" mode="adopt" size="sm" onClick={handleClaim} disabled={isClaiming}>
-            Claim Free
-          </Button>
-        ) : (
-          <Button variant="primary" mode="collab" size="sm" onClick={() => requireAuthOrRedirect('apply') && setIsCollabModalOpen(true)}>
-            Apply
-          </Button>
-        )}
+          <div className="shrink-0 flex items-center gap-2">
+            {isOwner ? (
+              <Button variant="secondary" size="sm" onClick={() => router.push(`/edit/${project.id}`)}>
+                Edit Listing
+              </Button>
+            ) : isEntitled ? (
+              <Button variant="primary" mode="buy" size="sm" onClick={handleDownload} disabled={isDownloading}>
+                Download ZIP
+              </Button>
+            ) : project.is_sold || project.is_collab_filled ? (
+              <Button variant="secondary" size="sm" disabled>
+                Closed
+              </Button>
+            ) : project.interaction_type === 'buy' ? (
+              <Button variant="primary" mode="buy" size="sm" onClick={() => {
+                track('click_cta', { action: 'buy', project_id: project.id });
+                if (requireAuthOrRedirect('buy')) setIsBuyModalOpen(true);
+              }}>
+                Acquire Codebase
+              </Button>
+            ) : project.interaction_type === 'adopt' ? (
+              <Button variant="primary" mode="adopt" size="sm" onClick={handleClaim} disabled={isClaiming}>
+                Claim Free
+              </Button>
+            ) : (
+              <Button variant="primary" mode="collab" size="sm" onClick={() => {
+                track('click_cta', { action: 'apply', project_id: project.id });
+                if (requireAuthOrRedirect('apply')) setIsCollabModalOpen(true);
+              }}>
+                Apply Collab
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       <Footer />

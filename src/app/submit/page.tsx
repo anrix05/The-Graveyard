@@ -46,6 +46,7 @@ import { formatINR, toPaise } from '@/lib/format';
 import { formatEpitaph } from '@/lib/epitaph';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { compressImage } from '@/lib/image-compression';
 import { toast } from 'sonner';
 
 const STEPS: StepItem[] = [
@@ -325,8 +326,8 @@ export default function SubmitWizardPage() {
     }
   };
 
-  // Screenshot Selection
-  const handleAddScreenshots = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Screenshot Selection with Client-side WebP compression
+  const handleAddScreenshots = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
@@ -334,16 +335,19 @@ export default function SubmitWizardPage() {
     const previews: string[] = [];
 
     for (const f of files) {
-      if (f.size > 2 * 1024 * 1024) {
-        toast.error(`"${f.name}" is over 2MB limit.`);
-        continue;
-      }
       if (screenshotFiles.length + validFiles.length >= 6) {
         toast.error('Maximum 6 screenshots allowed.');
         break;
       }
-      validFiles.push(f);
-      previews.push(URL.createObjectURL(f));
+      try {
+        const compressed = await compressImage(f, { maxDimension: 1600, maxSizeBytes: 300 * 1024 });
+        validFiles.push(compressed.file);
+        previews.push(URL.createObjectURL(compressed.file));
+        toast.success(`${compressed.file.name}: ${compressed.savingsText}`);
+      } catch {
+        validFiles.push(f);
+        previews.push(URL.createObjectURL(f));
+      }
     }
 
     setScreenshotFiles((prev) => [...prev, ...validFiles]);
@@ -433,8 +437,9 @@ export default function SubmitWizardPage() {
       // 1. Upload Cover Image to public 'project-covers' bucket if provided
       let finalCoverUrl: string | null = null;
       if (coverFile) {
-        const coverExt = coverFile.name.split('.').pop() || 'png';
-        const coverPath = `${user.id}/${Date.now()}_cover.${coverExt}`;
+        const coverExt = coverFile.name.split('.').pop() || 'webp';
+        const coverHash = Math.random().toString(36).slice(2, 8);
+        const coverPath = `${user.id}/${Date.now()}_${coverHash}_cover.${coverExt}`;
         const { error: coverErr } = await supabase.storage
           .from('project-covers')
           .upload(coverPath, coverFile, { upsert: true });
@@ -453,8 +458,9 @@ export default function SubmitWizardPage() {
       const uploadedScreenshots: string[] = [];
       for (let i = 0; i < screenshotFiles.length; i++) {
         const sf = screenshotFiles[i];
-        const sExt = sf.name.split('.').pop() || 'png';
-        const sPath = `${user.id}/${Date.now()}_shot_${i}.${sExt}`;
+        const sExt = sf.name.split('.').pop() || 'webp';
+        const sHash = Math.random().toString(36).slice(2, 8);
+        const sPath = `${user.id}/${Date.now()}_${sHash}_shot_${i}.${sExt}`;
         const { error: sErr } = await supabase.storage
           .from('project-covers')
           .upload(sPath, sf, { upsert: true });
@@ -586,7 +592,7 @@ export default function SubmitWizardPage() {
       localStorage.removeItem('graveyard_submit_draft_v2');
 
       toast.success('Your listing is live on The Graveyard!', { id: toastId });
-      setPublishedProjectId(newProject.id);
+      router.push(`/submit/success?id=${newProject.id}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Publishing failed';
       console.error('Publishing exception:', err);
@@ -599,7 +605,7 @@ export default function SubmitWizardPage() {
   // If already published, show success view
   if (publishedProjectId) {
     return (
-      <div className="min-h-screen bg-bg text-white flex flex-col">
+      <div className="min-h-dvh bg-bg text-white flex flex-col">
         <Header />
         <main className="flex-1 max-w-xl w-full mx-auto px-4 py-16 flex items-center justify-center">
           <div className="p-8 sm:p-10 bg-surface rounded-card border border-line text-center space-y-6 shadow-2xl">
@@ -650,10 +656,10 @@ export default function SubmitWizardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-bg text-white flex flex-col">
+    <div className="min-h-dvh bg-bg text-white flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16">
+      <main id="main" tabIndex={-1} className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 outline-none">
         {/* Stepper Header */}
         <div className="mb-10 text-center sm:text-left">
           <span className="font-mono text-xs uppercase tracking-widest text-[#ff2a2a] block mb-2">
@@ -805,7 +811,7 @@ export default function SubmitWizardPage() {
                   {/* Preview box */}
                   <div className="relative aspect-video bg-surface-2 rounded-card border border-line overflow-hidden flex items-center justify-center">
                     {coverPreview ? (
-                      <img src={coverPreview} alt="Preview" className="w-full h-full object-cover" />
+                      <img src={coverPreview} alt={`${title || 'Project'} cover preview`} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <CoverArt title={title || 'Dead Project'} mode="buy" className="w-full h-full" />
@@ -1101,7 +1107,7 @@ export default function SubmitWizardPage() {
                       <div className="flex flex-wrap items-center gap-3">
                         {screenshotPreviews.map((preview, sIdx) => (
                           <div key={preview} className="relative aspect-[16/10] w-24 rounded-lg overflow-hidden border border-line group">
-                            <img src={preview} alt={`Screenshot ${sIdx + 1}`} className="w-full h-full object-cover" />
+                            <img src={preview} alt={`${title || 'Project'} screenshot ${sIdx + 1} of ${screenshotPreviews.length}`} className="w-full h-full object-cover" />
                             <button
                               type="button"
                               onClick={() => {
@@ -1590,7 +1596,7 @@ export default function SubmitWizardPage() {
                   {/* Cover */}
                   <div className="relative aspect-[16/10] overflow-hidden bg-surface-2">
                     {coverPreview ? (
-                      <img src={coverPreview} alt={title} className="w-full h-full object-cover" />
+                      <img src={coverPreview} alt={`${title || 'Project'} cover image`} className="w-full h-full object-cover" />
                     ) : (
                       <CoverArt title={title || 'Untitled'} mode={interactionType} className="w-full h-full" />
                     )}
@@ -1742,8 +1748,8 @@ export default function SubmitWizardPage() {
             </div>
           )}
 
-          {/* Stepper Navigation Buttons */}
-          <div className="pt-6 border-t border-line flex items-center justify-between gap-4">
+          {/* Stepper Navigation Buttons (Sticky at bottom with safe area) */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 sm:-mx-10 sm:-mb-10 p-4 sm:p-6 bg-surface/95 backdrop-blur-md border-t border-line flex items-center justify-between gap-4 safe-pb z-20 rounded-b-card shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
             {currentStep > 1 ? (
               <Button
                 variant="ghost"

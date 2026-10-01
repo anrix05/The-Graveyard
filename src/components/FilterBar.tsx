@@ -93,6 +93,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Lock body scroll when mobile sheet open
+  useEffect(() => {
+    if (!isMobileSheetOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isMobileSheetOpen]);
+
   const modeTabs: { id: InteractionType | 'all'; label: string; count: number }[] = [
     { id: 'all', label: 'All projects', count: counts.all },
     { id: 'buy', label: 'For Sale', count: counts.buy },
@@ -127,12 +137,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     includeResurrected;
 
   return (
-    <div className="sticky top-[60px] md:top-[68px] z-30 w-full bg-[#0a0a0b]/95 border-b border-line py-3.5 px-4 sm:px-6 lg:px-8 transition-colors">
-      <div className="max-w-7xl mx-auto flex flex-col gap-3">
+    <div className="sticky top-[52px] sm:top-[60px] lg:top-[68px] z-30 w-full bg-[#0a0a0b]/95 backdrop-blur-md border-b border-line py-3 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="max-w-7xl mx-auto flex flex-col gap-2.5">
         {/* Top Filter Bar Controls */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Left: Mode Segmented Control with sliding indicator */}
-          <div className="hidden lg:flex items-center p-1 rounded-full bg-surface-2 border border-line">
+        <div className="flex items-center justify-between gap-2.5">
+          {/* Left: Mode Segmented Control on lg+ */}
+          <div className="hidden lg:flex items-center p-1 rounded-full bg-surface-2 border border-line shrink-0">
             {modeTabs.map((tab) => {
               const isActive = activeMode === tab.id;
               return (
@@ -141,7 +151,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   type="button"
                   onClick={() => setActiveMode(tab.id)}
                   className={cn(
-                    'relative px-4 py-1.5 rounded-full text-xs font-sans font-medium transition-colors select-none flex items-center gap-1.5',
+                    'relative px-4 py-1.5 rounded-full text-xs font-sans font-medium transition-colors select-none flex items-center gap-1.5 whitespace-nowrap',
                     isActive ? 'text-black' : 'text-muted hover:text-white'
                   )}
                 >
@@ -323,6 +333,38 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </div>
         </div>
 
+        {/* Mobile / Tablet Mode Tabs: horizontally scrollable segmented control with snap and edge-fade */}
+        <div className="lg:hidden relative w-full overflow-hidden pt-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:-mx-6 sm:px-6">
+            {modeTabs.map((tab) => {
+              const isActive = activeMode === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveMode(tab.id)}
+                  className={cn(
+                    'snap-start shrink-0 px-3.5 py-1.5 rounded-full text-xs font-sans font-medium transition-colors select-none flex items-center gap-1.5 whitespace-nowrap',
+                    isActive
+                      ? 'bg-white text-black font-semibold shadow-sm'
+                      : 'bg-surface-2 border border-line text-muted hover:text-white'
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      'font-mono text-[10px] px-1.5 py-0.2 rounded-full',
+                      isActive ? 'bg-black/15 text-black font-bold' : 'bg-surface-3 text-muted'
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Bottom Status & Active Filter Chips */}
         <div className="flex items-center justify-between gap-3 text-xs text-muted flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
@@ -365,112 +407,122 @@ export const FilterBar: React.FC<FilterBarProps> = ({
       {isMobileSheetOpen && (
         <div className="fixed inset-0 z-modal bg-black/80 backdrop-blur-sm flex items-end sm:hidden animate-in fade-in duration-200">
           <div
-            className="w-full bg-surface border-t border-line rounded-t-3xl p-6 space-y-6 max-h-[85vh] overflow-y-auto"
+            className="w-full bg-surface border-t border-line rounded-t-3xl p-5 space-y-5 max-h-[90dvh] flex flex-col safe-pb overflow-hidden"
             data-lenis-prevent
           >
-            <div className="flex items-center justify-between pb-3 border-b border-line">
+            {/* Grab handle */}
+            <div className="w-12 h-1 bg-line rounded-full mx-auto -mt-1 mb-1 shrink-0" />
+
+            <div className="flex items-center justify-between pb-3 border-b border-line shrink-0">
               <h3 className="font-display text-lg font-semibold text-white">Filter & Sort</h3>
               <button
                 type="button"
                 onClick={() => setIsMobileSheetOpen(false)}
                 className="p-1 rounded-full text-muted hover:text-white"
+                aria-label="Close filters"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Mode selection */}
-            <div className="space-y-2">
-              <span className="text-xs font-mono uppercase text-muted">Listing Type</span>
-              <div className="grid grid-cols-2 gap-2">
-                {modeTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveMode(tab.id)}
-                    className={cn(
-                      'p-2.5 rounded-xl border text-xs font-sans text-left flex justify-between items-center',
-                      activeMode === tab.id
-                        ? 'bg-white text-black border-white font-medium'
-                        : 'bg-surface-2 border-line text-muted'
-                    )}
-                  >
-                    <span>{tab.label}</span>
-                    <span className="font-mono text-[10px]">{tab.count}</span>
-                  </button>
-                ))}
+            {/* Scrollable sheet body */}
+            <div className="flex-1 overflow-y-auto overscroll-contain space-y-5 pr-1">
+              {/* Mode selection */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono uppercase text-muted">Listing Type</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {modeTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveMode(tab.id)}
+                      className={cn(
+                        'p-2.5 rounded-xl border text-xs font-sans text-left flex justify-between items-center',
+                        activeMode === tab.id
+                          ? 'bg-white text-black border-white font-medium'
+                          : 'bg-surface-2 border-line text-muted'
+                      )}
+                    >
+                      <span>{tab.label}</span>
+                      <span className="font-mono text-[10px]">{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Include Resurrected */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIncludeResurrected(!includeResurrected)}
+                  className={cn(
+                    'w-full p-3 rounded-xl border text-xs font-sans flex items-center justify-between',
+                    includeResurrected
+                      ? 'bg-neon-green/10 border-neon-green/40 text-neon-green'
+                      : 'bg-surface-2 border-line text-muted'
+                  )}
+                >
+                  <span>Include revived codebases</span>
+                  <span className="font-mono font-bold">{includeResurrected ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
+
+              {/* Tech stack */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono uppercase text-muted">Technologies</span>
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-1 bg-surface-2 rounded-xl border border-line">
+                  {CANONICAL_TECHS.map((tech) => (
+                    <button
+                      key={tech}
+                      type="button"
+                      onClick={() => toggleTech(tech)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-full text-xs font-mono border transition-colors',
+                        selectedTechs.includes(tech)
+                          ? 'bg-white text-black border-white font-medium'
+                          : 'bg-surface border-line text-muted'
+                      )}
+                    >
+                      {tech}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono uppercase text-muted">Sort By</span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {sortOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setActiveSort(opt.id)}
+                      className={cn(
+                        'p-2.5 rounded-xl border text-xs font-sans text-left flex justify-between items-center',
+                        activeSort === opt.id
+                          ? 'bg-surface-2 text-white border-white/30 font-medium'
+                          : 'bg-surface border-line text-muted'
+                      )}
+                    >
+                      <span>{opt.label}</span>
+                      {activeSort === opt.id && <Check className="w-4 h-4 text-neon-green" />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Include Resurrected */}
-            <div className="pt-2">
+            {/* Pinned Sticky Footer Button */}
+            <div className="pt-3 border-t border-line shrink-0">
               <button
                 type="button"
-                onClick={() => setIncludeResurrected(!includeResurrected)}
-                className={cn(
-                  'w-full p-3 rounded-xl border text-xs font-sans flex items-center justify-between',
-                  includeResurrected
-                    ? 'bg-neon-green/10 border-neon-green/40 text-neon-green'
-                    : 'bg-surface-2 border-line text-muted'
-                )}
+                onClick={() => setIsMobileSheetOpen(false)}
+                className="w-full py-3 rounded-full bg-white text-black font-sans font-semibold text-sm cursor-pointer shadow-lg active:scale-[0.99] transition-transform"
               >
-                <span>Include revived codebases</span>
-                <span className="font-mono font-bold">{includeResurrected ? 'ON' : 'OFF'}</span>
+                Apply Filters ({totalMatching} results)
               </button>
             </div>
-
-            {/* Tech stack */}
-            <div className="space-y-2">
-              <span className="text-xs font-mono uppercase text-muted">Technologies</span>
-              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-1">
-                {CANONICAL_TECHS.map((tech) => (
-                  <button
-                    key={tech}
-                    type="button"
-                    onClick={() => toggleTech(tech)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs font-mono border transition-colors',
-                      selectedTechs.includes(tech)
-                        ? 'bg-white text-black border-white'
-                        : 'bg-surface-2 border-line text-muted'
-                    )}
-                  >
-                    {tech}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Sort */}
-            <div className="space-y-2">
-              <span className="text-xs font-mono uppercase text-muted">Sort By</span>
-              <div className="grid grid-cols-1 gap-1.5">
-                {sortOptions.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setActiveSort(opt.id)}
-                    className={cn(
-                      'p-2.5 rounded-xl border text-xs font-sans text-left flex justify-between items-center',
-                      activeSort === opt.id
-                        ? 'bg-surface-2 text-white border-white/30'
-                        : 'bg-surface border-line text-muted'
-                    )}
-                  >
-                    <span>{opt.label}</span>
-                    {activeSort === opt.id && <Check className="w-4 h-4 text-neon-green" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsMobileSheetOpen(false)}
-              className="w-full py-3 rounded-full bg-white text-black font-sans font-semibold text-sm"
-            >
-              Apply Filters ({totalMatching} results)
-            </button>
           </div>
         </div>
       )}

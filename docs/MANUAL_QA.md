@@ -305,5 +305,236 @@ Use this checklist to verify all features, user flows, database constraints, mot
 - [ ] **Lighthouse Layout Shift:**
   - Run Lighthouse on mobile `/`: confirm CLS is 0.00 with no layout shift caused by intro or logo landing.
 
+---
+
+## 6. V2.4 Authentication & Auth Suite QA Checklist
+
+### 6.1 Layout, Responsiveness & Shape Language
+- [ ] **Desktop Split Layout (≥ 1024px):**
+  - Verify full-viewport split screen with left panel 46% width and right panel 54% width.
+  - Verify both panels start at the top edge of the viewport and extend to `min-h-dvh` with zero outer boxes or sharp borders.
+  - Verify form column is horizontally and vertically centered with `max-w-[420px]`.
+  - Verify `← Back to home` link sits inside the form column, not floating at viewport edge.
+- [ ] **Mobile & Tablet (< 1024px):**
+  - Verify brand panel collapses to a compact top bar (skull + wordmark + headline).
+  - Verify at ≤ 480px width, only skull + wordmark are shown.
+  - Verify natural vertical scrolling on short screens (e.g. mobile landscape) and at 200% browser zoom with zero clipped form controls.
+  - Verify test at 320px width: zero horizontal scrolling.
+
+### 6.2 Form States, Validation & Enumeration Protection
+- [ ] **Sign In & Sign Up Tab Switching:**
+  - Click between "Sign in" and "Create account" tabs: verify smooth sliding pill indicator (`layoutId="auth-tab-pill"`).
+  - Verify URL syncs with `?mode=signin` / `?mode=signup` with `replace` and no scroll jump.
+  - Verify typed email is preserved across tab switches while password and validation errors reset.
+- [ ] **Validation & Keyboard Behavior:**
+  - Leave fields blank and submit: verify first invalid field receives focus immediately.
+  - Verify inline validation errors display below the field with red text, icon, and `aria-describedby`.
+  - Type in password with Caps Lock on: verify amber "Caps Lock is on" alert appears dynamically under the input.
+  - Click show/hide password toggle: verify input type switches between `password` and `text`, and `aria-pressed` reflects state.
+  - On sign-up, type password: verify 4-segment strength meter updates dynamically with text label ("Weak", "Okay", "Strong").
+- [ ] **Account Enumeration Safety:**
+  - Attempt sign-in with non-existent email or wrong password: verify message reads "Email or password is incorrect."
+  - Attempt forgot-password request: verify message reads "If an account exists for that email, we've sent a reset link."
+- [ ] **Sign-up & Magic Link Success Views:**
+  - Complete sign-up: verify form transitions to "Check your email" view with 30s resend cooldown timer and "Use a different email" link.
+  - Request magic link: verify transition to magic link confirmation view with resend cooldown.
+- [ ] **Autofill Styling:**
+  - Use browser password autofill: verify inputs maintain dark surface background (`#17171a`) and readable text without bright white autofill backgrounds.
+
+### 6.3 OAuth, Redirect Hardening & Intent Auto-Engagement
+- [ ] **Open-Redirect Hardening Tests:**
+  - Visit `/login?next=//evil.com`: verify post-login landing is `/dashboard`.
+  - Visit `/login?next=https://evil.com`: verify post-login landing is `/dashboard`.
+  - Visit `/login?next=/\evil.com`: verify post-login landing is `/dashboard`.
+  - Visit `/login?next=%2f%2fevil.com`: verify post-login landing is `/dashboard`.
+  - Visit `/login?next=/project/123`: verify post-login landing is `/project/123`.
+- [ ] **Action Intent Whitelisting & Preservation:**
+  - Visit `/login?next=/project/test-id&intent=buy`: log in and verify redirect to `/project/test-id?intent=buy` opening checkout.
+  - Visit `/login?next=/project/test-id&intent=claim`: log in and verify redirect to `/project/test-id?intent=claim` opening claim modal.
+  - Visit `/login?next=/project/test-id&intent=apply`: log in and verify redirect to `/project/test-id?intent=apply` opening pitch modal.
+  - Visit `/login?next=/project/test-id&intent=malicious`: verify invalid intent is dropped.
+- [ ] **OAuth Cancellation:**
+  - Click "Continue with GitHub", cancel authorization on GitHub: verify redirect back to `/login` with friendly inline alert: "Sign-in was cancelled."
+
+### 6.4 Onboarding & Companion Flows
+- [ ] **First-Time User Onboarding:**
+  - Sign in with a new user: verify redirection to `/onboarding`.
+  - Type username: verify 400ms debounced live check against `profiles` table displays "checking", "available", or "taken".
+  - Submit onboarding profile: verify profile is created and user is routed to `safeNext`.
+- [ ] **Password Reset Flow:**
+  - Visit `/forgot-password`: enter email, submit, verify cooldown.
+  - Visit `/reset-password` without valid session: verify "Reset link expired" screen with CTA to request a new link.
+  - Visit `/reset-password` with valid session: enter new password + confirm, verify strength meter and successful update.
+
+### 6.5 Demo Mode Sandbox
+- [ ] **Demo Mode Toggles:**
+  - With `NEXT_PUBLIC_DEMO_MODE=true`: verify "Just exploring?" sandbox section appears with "Try as demo buyer" and "Try as demo seller".
+  - Click "Try as demo buyer": verify instant login and dashboard redirect prefilled with purchases.
+  - Click "Try as demo seller": verify instant login owning live listings and sales ledger.
+  - With `NEXT_PUBLIC_DEMO_MODE=false`: verify demo block is completely hidden.
+
+### 6.6 Accessibility & Motion
+- [ ] **WCAG AA Contrast & Focus:**
+  - Tab through all controls with keyboard: verify visible `2px` focus outline with offset on tabs, buttons, inputs, and links.
+  - Verify all text colors pass WCAG AA contrast against dark surfaces.
+  - Verify all touch targets are ≥ 44px height.
+- [ ] **Motion & Performance:**
+  - High tier: verify 8 subtle glyphs gently drift in brand panel (`transform: translateY`).
+  - Mid/Low tier or `prefers-reduced-motion`: verify drifting is static and error shake is disabled.
+
+---
+
+## 7. v2.6 Launch Readiness QA Checklist
+
+### 7.1 SEO, Metadata & Structured Data
+- [ ] **Page Metadata & Canonicals:**
+  - View source on `/`: verify title `The Graveyard: where dead code gets resurrected`, description (≤155 chars), canonical link to `/`, Open Graph and Twitter summary tags.
+  - View source on a project page (`/project/[id]`): verify unique title `{title} · {For sale | Free fork | Seeking partner} · The Graveyard`, tagline description, canonical to `/project/[id]`, dynamic OG image URL.
+  - View source on `/terms`, `/privacy`, `/contact`: verify unique indexable meta tags.
+  - View source on private routes (`/login`, `/submit`, `/dashboard`, `/orders/[id]`, `/collab/sent`, `/design-system/responsive`): verify `<meta name="robots" content="noindex, nofollow" />`.
+- [ ] **JSON-LD Structured Data:**
+  - View source on `/`: verify `<script type="application/ld+json">` includes valid `WebSite` with `SearchAction` (`/?q={search_term_string}`) and `Organization` markup with social links from env vars.
+  - Verify JSON is escaped safely against XSS without `<` or `>` injections.
+
+### 7.2 Social Share Previews
+- [ ] **Default OG Card (`/opengraph-image`):**
+  - Open `/opengraph-image` in browser: verify 1200×630 canvas, red radial glow, vector skull mark, "The Graveyard" wordmark, and "Where dead code gets resurrected" tagline with safe 64px padding.
+- [ ] **Dynamic Project OG Card (`/project/[id]/opengraph-image`):**
+  - Open a project's OG image: verify mode badge pill (dot + text), price/terms, project title, tagline, tombstone line, seller attribution, and footer mark.
+  - Verify text truncation: long titles or taglines truncate cleanly with ellipsis without visual overflow.
+  - Open an invalid ID: verify fallback default Graveyard social card renders.
+
+### 7.3 Favicons & Web Manifest
+- [ ] **Favicon Suite:**
+  - Browser tab displays red skull favicon on dark rounded square against both light and dark browser themes.
+  - Verify `/apple-icon.png` (180×180), `/favicon.ico` (multi-size), `/icon-192.png`, and `/icon-512.png` respond with 200 OK.
+  - Verify `/icon-maskable-512.png` keeps skull inside Android safe zone.
+- [ ] **Web Manifest (`/manifest.webmanifest`):**
+  - Verify response JSON contains `name: "The Graveyard"`, `short_name: "Graveyard"`, `theme_color: "#0a0a0b"`, and icon entries.
+
+### 7.4 Robots.txt & Dynamic Sitemap
+- [ ] **Robots Exclusion (`/robots.txt`):**
+  - Verify `/` is allowed; `/api/`, `/dashboard`, `/orders/`, `/submit`, `/collab/`, `/auth/`, `/login`, `/design-system/responsive` are disallowed.
+  - Verify `Sitemap:` points to `https://.../sitemap.xml`.
+- [ ] **Sitemap (`/sitemap.xml`):**
+  - Verify static routes (`/`, `/terms`, `/privacy`, `/contact`, `/design-system`) are listed.
+  - Verify live, non-archived projects (`/projects/{id}`) are listed with accurate `lastModified` and priority scores.
+  - Verify archived or deleted projects are excluded.
+
+### 7.5 Alt Text & Image Accessibility
+- [ ] **Alt Text Audit:**
+  - Inspect project cards, bento features, screenshot gallery, and avatar elements in DevTools: verify every `Img` has a descriptive `alt` attribute or `decorative: true` (`alt=""` + `aria-hidden="true"`).
+  - Verify `npm run lint` passes with `jsx-a11y/alt-text` set to error.
+
+### 7.6 Order Confirmation & Thank-You Flows
+- [ ] **Paid Purchase (`/orders/[transactionId]`):**
+  - Complete test mode acquisition: verify instant redirect to `/orders/[transactionId]`.
+  - Verify `TEST MODE` pill, project details, copyable transaction ID, and delivery card (source ZIP download + GitHub invite status).
+  - Verify "Print / Save as PDF" button triggers print stylesheet cleanly formatted as a receipt.
+  - Attempt accessing order with unauthenticated or non-buyer account: verify `404 Not Found`.
+- [ ] **Free Fork Claim:**
+  - Click "Claim Free" on an adopt project: verify success toast and redirect to `/orders/[transactionId]`.
+- [ ] **Publish Confirmation (`/submit/success?id=...`):**
+  - Publish a listing from wizard: verify redirect to `/submit/success?id=...`.
+  - Verify listing preview card, copyable link button, and share intent buttons (X, LinkedIn, WhatsApp).
+  - Verify unauthenticated or non-owner access yields `404 Not Found`.
+- [ ] **Collab Pitch Confirmation (`/collab/sent?project=...`):**
+  - Submit collaboration pitch: verify redirect to `/collab/sent?project=...` with next steps and link to Collabs Console.
+
+### 7.7 Analytics & Minimal Consent Notice
+- [ ] **Consent Notice & Persistence:**
+  - Visit `/` on a fresh session after intro completes: verify non-blocking bottom consent card appears without obscuring navigation or CTAs.
+  - Click "Got it": verify banner dismisses and sets 12-month preference in `localStorage`.
+  - Click "Cookie settings" in footer: verify settings modal opens with analytics toggle.
+- [ ] **Opt-Out & Privacy Controls:**
+  - Select "Opt out of analytics" or enable Do Not Track (`navigator.doNotTrack === '1'`) or Global Privacy Control: verify `@vercel/analytics` drops all outgoing beacons (`beforeSend` returns null).
+  - Verify analytics is disabled in local development.
+  - Verify zero PII is emitted across all `track()` event payloads.
+
+### 7.8 Legal & Contact Pages
+- [ ] **Privacy Policy (`/privacy`) & Terms of Use (`/terms`):**
+  - Verify visible portfolio demonstration disclaimer banner at top.
+  - Verify Table of Contents with smooth anchor links.
+  - Verify 68ch maximum reading measure and print styles.
+  - Verify contact email is populated from `NEXT_PUBLIC_CONTACT_EMAIL`.
+- [ ] **Contact Page (`/contact`):**
+  - Verify Email card with copy button, GitHub card with link to repository issues, and Report a Listing card.
+  - Click "Report this listing" from a project detail page: verify `/contact?listing=[id]` prefills takedown email subject and body.
+
+### 7.9 Image Optimization & Upload Compression
+- [ ] **Client-Side Compression:**
+  - In Submit wizard or Edit listing, upload a 4MB photo as cover: verify toast logs optimization (e.g., `Optimized 4.20MB → 210KB WebP`).
+  - Verify uploaded file stored in Supabase storage has `.webp` extension with random cache-busting suffix.
+- [ ] **Next.js Image Delivery:**
+  - Inspect network responses for project covers and gallery: verify `content-type: image/webp` or `image/avif` with `Cache-Control: max-age=2678400`.
+
+### 7.10 Security Headers
+- [ ] **Header Verification:**
+  - Run `curl -I http://localhost:3000/` or inspect network headers in DevTools:
+    - `X-Content-Type-Options: nosniff`
+    - `Referrer-Policy: strict-origin-when-cross-origin`
+    - `X-Frame-Options: SAMEORIGIN`
+    - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+    - In production: verify `Content-Security-Policy-Report-Only` is present without console blocking errors.
+
+### 7.11 404 & Above-The-Fold CTAs
+- [ ] **Branded 404:**
+  - Visit `/non-existent-route`: verify branded 404 page, search input submitting to `/?q=`, dual CTAs (`Back to home` + `Browse projects`), and `noindex` header.
+- [ ] **Above-the-fold CTA Visibility:**
+  - Verify clear primary action is visible without scrolling at 1366×768 (desktop) and 390×844 (mobile) across Home, Project Detail, Wizard, Login, Dashboard, Contact, Orders, and 404.
+
+---
+
+## 8. V2.7 MANUAL QA: HERO BACKGROUND MOTION ON MOBILE
+
+### 8.1 Mobile Viewport & Margin Drift Emulation
+- [ ] **DevTools Mobile Emulation (440×956, 390×844, 360×800, 320×568):**
+  - Verify glyphs drift smoothly in the hero perimeter and margins.
+  - Verify no glyphs cross over or overlap the status pill, main headline, subline, or primary CTA buttons.
+  - Verify smooth 60fps scrolling without stutter or frame drops.
+- [ ] **Mobile Text Wrap Polish:**
+  - Verify "co-founder" in the subline never breaks across two lines at the hyphen ("co-" / "founder").
+
+### 8.2 Real Phone & Touch Interaction Testing
+- [ ] **Real Phone (iOS Safari & Android Chrome):**
+  - Test on a real device using a production build (`npm run perf` / `npm run build && npm run start`).
+  - Verify subtle motion is visible in the background.
+  - Verify scrolling is buttery smooth, with zero touch lag and no battery drain or heat buildup over 60 seconds of use.
+- [ ] **Touch Ripple Interaction:**
+  - Tap or drag a finger inside the hero area: verify subtle ripple nudges nearby 4–6 particles outward without blocking or interfering with vertical scrolling (`touch-action: pan-y`).
+  - Tap CTA buttons ("Browse projects", "List a dead project"): verify button taps register immediately without being intercepted by the canvas layer.
+
+### 8.3 Screen Rotation & Address Bar Collapse
+- [ ] **Phone Rotation (Portrait ↔ Landscape):**
+  - Rotate device to landscape: verify canvas and dynamic legibility mask resize correctly without stuck particles.
+  - Scroll up and down on a real phone: verify that mobile browser address bar collapsing/expanding does not cause canvas re-allocation or layout shift (debounced 120px threshold).
+
+### 8.4 Hero FX Mode Overrides & Reduced Motion
+- [ ] **Query Parameter Overrides (`?fx=`):**
+  - `/?fx=canvas`: forces canvas mode (desktop or mobile according to viewport).
+  - `/?fx=css`: forces pure CSS fallback (drifting ambient red glow + 10 perimeter glyphs).
+  - `/?fx=static`: forces static gradient (zero particle loops, zero CSS animations).
+- [ ] **Accessibility / Reduced Motion:**
+  - Enable OS "Reduce motion" preference: verify hero background immediately locks to the static gradient.
+- [ ] **Background Tab & Off-Screen Pausing:**
+  - Scroll past the hero: verify `IntersectionObserver` pauses canvas rendering and CSS animations.
+  - Switch browser tabs: verify `visibilitychange` pauses loops, and resumes cleanly without time jumps.
+
+### 8.5 Governor Self-Protection Fallback
+- [ ] **CPU 6x Throttling:**
+  - In Chrome DevTools Performance panel, set CPU to "6x slowdown".
+  - Reload page: verify that if median frame time exceeds ~42ms during the first 2 seconds, the hero automatically downgrades to `css` mode and remembers it in `sessionStorage`.
+
+### 8.6 Design System & Viewport Badge Verification
+- [ ] **Design System (`/design-system`):**
+  - Visit `/design-system`, open the "Motion & Governor" tab:
+    - Verify updated v2.7 performance tier rules table (High = Desktop, Mid = Mobile/Touch, Low = Fallback/Battery).
+    - Test the Hero FX Mode Switcher buttons (`Auto`, `Desktop`, `Mobile`, `CSS`, `Static`).
+    - Verify the interactive Hero Motion Sandbox renders and updates live with the active mode and dynamic legibility mask.
+- [ ] **Viewport Badge (Dev Mode / `?debug=viewport`):**
+  - Verify the badge displays the active Hero FX mode (e.g., `MD | 440×956 | 2x | MID | canvas-mobile`).
+
+
+
 
 

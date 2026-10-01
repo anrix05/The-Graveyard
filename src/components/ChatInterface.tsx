@@ -298,9 +298,13 @@ export default function ChatInterface({ initialRecipientId }: ChatInterfaceProps
   };
 
   return (
-    <div className="h-[640px] w-full border border-line bg-surface rounded-card flex overflow-hidden shadow-xl">
-      {/* LEFT PANE: Thread List */}
-      <div className="w-full sm:w-80 md:w-96 border-r border-line flex flex-col bg-surface">
+    <div className="h-[calc(100dvh-140px)] min-h-[460px] max-h-[820px] w-full border border-line bg-surface rounded-card flex overflow-hidden shadow-xl relative">
+      {/* LEFT PANE: Thread List (Full width on < lg when no active thread; hidden on < lg when thread active; fixed width on >= lg) */}
+      <div
+        className={`w-full lg:w-80 xl:w-96 border-r border-line flex flex-col bg-surface transition-all ${
+          activeThreadKey ? 'hidden lg:flex' : 'flex'
+        }`}
+      >
         {/* Header */}
         <div className="p-4 border-b border-line flex items-center justify-between">
           <span className="font-sans text-sm font-semibold text-white">
@@ -373,19 +377,30 @@ export default function ChatInterface({ initialRecipientId }: ChatInterfaceProps
       </div>
 
       {/* RIGHT PANE: Conversation View */}
-      <div className="flex-1 flex flex-col bg-surface-2">
+      <div className={`flex-1 flex flex-col bg-surface-2 ${!activeThreadKey ? 'hidden lg:flex' : 'flex'}`}>
         {activeThread ? (
           <>
             {/* Thread Header */}
-            <div className="p-4 border-b border-line bg-surface flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="p-3.5 sm:p-4 border-b border-line bg-surface flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveThread(null);
+                    setActiveThreadKey(null);
+                  }}
+                  className="lg:hidden p-1.5 -ml-1 text-muted hover:text-white hover:bg-surface-2 rounded-lg transition-colors flex items-center"
+                  aria-label="Back to conversations"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
                 <Avatar src={activeThread.other_user.avatar_url} username={activeThread.other_user.username} size={32} />
-                <div>
-                  <span className="font-sans font-semibold text-sm text-white block">
+                <div className="min-w-0">
+                  <span className="font-sans font-semibold text-sm text-white block truncate">
                     @{activeThread.other_user.username}
                   </span>
                   {activeThread.project_title && (
-                    <span className="font-mono text-xs text-[#60a5fa] flex items-center gap-1">
+                    <span className="font-mono text-xs text-[#60a5fa] flex items-center gap-1 truncate max-w-[200px] sm:max-w-xs">
                       <span>Thread: {activeThread.project_title}</span>
                     </span>
                   )}
@@ -403,7 +418,7 @@ export default function ChatInterface({ initialRecipientId }: ChatInterfaceProps
             </div>
 
             {/* Messages Stream */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3">
+            <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-3">
               {isLoadingMessages ? (
                 <div className="p-8 text-center font-mono text-xs text-muted">
                   Loading messages...
@@ -421,7 +436,7 @@ export default function ChatInterface({ initialRecipientId }: ChatInterfaceProps
                       className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`max-w-[75%] p-3 font-sans text-xs sm:text-sm rounded-xl leading-relaxed ${
+                        className={`max-w-[85%] sm:max-w-[75%] p-3 font-sans text-xs sm:text-sm rounded-xl leading-relaxed break-anywhere ${
                           isMe
                             ? 'bg-white text-black font-normal'
                             : 'bg-surface border border-line text-white'
@@ -442,13 +457,13 @@ export default function ChatInterface({ initialRecipientId }: ChatInterfaceProps
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input Box */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-line bg-surface flex gap-2">
+            {/* Message Input Box - Sticky at bottom with safe-area padding */}
+            <form onSubmit={handleSendMessage} className="p-3 border-t border-line bg-surface flex gap-2 sticky bottom-0 safe-pb">
               <Input
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 placeholder="Type your transmission..."
-                className="flex-1 h-10 font-sans text-xs"
+                className="flex-1 h-10 font-sans text-base sm:text-xs"
               />
               <Button
                 variant="primary"

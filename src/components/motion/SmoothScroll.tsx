@@ -56,5 +56,5 @@ export default function SmoothScroll({ children }: { children: React.ReactNode }
     }
   }, [pathname]);
 
-  return <div className="overflow-x-clip min-h-screen">{children}</div>;
+  return <div className="overflow-x-clip min-h-dvh">{children}</div>;
 }

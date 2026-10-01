@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { Project } from '@/types/project';
 import { formatEpitaph } from '@/lib/epitaph';
 import { ModeBadge, StatusBadge } from '@/components/ui/badge';
@@ -47,17 +47,17 @@ export const ProjectCard = React.memo(function ProjectCard({
   return (
     <article
       data-cursor="View"
-      className="group relative flex flex-col justify-between rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden h-full select-none"
+      className="group @container relative flex flex-col justify-between rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden h-full select-none min-w-0"
     >
       {/* Edge-to-edge Cover Container (16:10 aspect ratio) */}
       <div className="relative aspect-[16/10] w-full overflow-hidden bg-surface-2 shrink-0">
         {cover_url ? (
-          <Image
+          <Img
             src={cover_url}
-            alt={title}
+            alt={`${title} cover image`}
             fill
             unoptimized
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1536px) 33vw, 25vw"
             className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
           />
         ) : (
@@ -72,7 +72,7 @@ export const ProjectCard = React.memo(function ProjectCard({
         <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent opacity-80" />
 
         {/* Mode Badge & Status on Top-Left */}
-        <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 flex-wrap">
           <ModeBadge mode={interaction_type} />
           {is_sold && <StatusBadge status="sold" />}
           {is_collab_filled && <StatusBadge status="filled" />}
@@ -87,10 +87,10 @@ export const ProjectCard = React.memo(function ProjectCard({
       </div>
 
       {/* Card Body */}
-      <div className="p-5 flex flex-col flex-1 gap-3">
+      <div className="p-4 sm:p-5 flex flex-col flex-1 gap-3 min-w-0">
         {/* Title with accessible link (no default underline, animated on hover) */}
-        <div className="space-y-1">
-          <h3 className="font-sans font-semibold text-lg text-white tracking-tight line-clamp-1">
+        <div className="space-y-1 min-w-0">
+          <h3 className="font-sans font-semibold text-base sm:text-lg text-white tracking-tight line-clamp-1 break-anywhere">
             <Link
               href={`/project/${id}`}
               className="relative z-10 focus-visible:outline-none no-underline"
@@ -111,8 +111,8 @@ export const ProjectCard = React.memo(function ProjectCard({
           )}
         </div>
 
-        {/* Tagline / Description: fixed 2-line height area so cards don't shrink */}
-        <p className="font-sans text-sm text-fg/75 line-clamp-2 min-h-[40px] leading-relaxed">
+        {/* Tagline / Description: min-height area so cards don't shrink */}
+        <p className="font-sans text-sm text-fg/75 line-clamp-2 min-h-[40px] leading-relaxed break-anywhere">
           {tagline || description || 'No description provided for this codebase.'}
         </p>
 

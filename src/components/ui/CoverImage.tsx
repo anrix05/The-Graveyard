@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { Terminal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +21,6 @@ function generatePatternStyle(str: string) {
   }
 
   const hue1 = Math.abs(hash % 360);
-  const hue2 = (hue1 + 45) % 360;
 
   return {
     background: `radial-gradient(circle at 75% 25%, hsl(${hue1} 80% 25% / 0.4) 0%, transparent 60%), linear-gradient(135deg, #0f0f0f 0%, #171717 100%)`,
@@ -48,9 +47,9 @@ export const CoverImage: React.FC<CoverImageProps> = ({
   if (coverUrl && !imageError) {
     return (
       <div className={cn('relative w-full overflow-hidden bg-[#121212]', aspectClass, className)}>
-        <Image
+        <Img
           src={coverUrl}
-          alt={alt || title}
+          alt={alt || `${title} cover image`}
           fill
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           className="object-cover transition-transform duration-300 group-hover:scale-105"

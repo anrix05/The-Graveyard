@@ -100,6 +100,11 @@ export default function TechMarquee() {
           animation: marquee 35s linear infinite;
           will-change: transform;
         }
+        @media (prefers-reduced-motion: reduce) {
+          .tech-marquee-track {
+            animation: none !important;
+          }
+        }
       `}</style>
     </div>
   );

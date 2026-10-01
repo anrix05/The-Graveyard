@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import Img from '@/components/ui/Img';
 import { ArrowRight, Flame } from 'lucide-react';
 import { Project } from '@/types/project';
 import { formatEpitaph } from '@/lib/epitaph';
@@ -53,20 +53,20 @@ export default function FeaturedResurrections({
         </div>
       </Reveal>
 
-      {/* 3 ITEMS: FIXED-HEIGHT BENTO LAYOUT (624px total) */}
+      {/* 3 ITEMS: FIXED-ROW BENTO ON LG, 2-COLS ON MD, 1-COL ON MOBILE */}
       {count >= 3 && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Large Card: cols 1-7, 2 rows (624px on lg) */}
-          <div className="lg:col-span-7 lg:h-[624px] group relative rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden flex flex-col justify-between">
-            {/* Top ~55% Cover Area */}
-            <div className="relative w-full h-[310px] sm:h-[345px] overflow-hidden bg-surface-2 shrink-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 items-stretch">
+          {/* Large Card: cols 1-7 on lg, full width on md and mobile */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-7 lg:min-h-[624px] group relative rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden flex flex-col justify-between min-w-0">
+            {/* Top Cover Area */}
+            <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] lg:aspect-auto lg:h-[345px] overflow-hidden bg-surface-2 shrink-0">
               {mainFeatured.cover_url ? (
-                <Image
+                <Img
                   src={mainFeatured.cover_url}
-                  alt={mainFeatured.title}
+                  alt={`${mainFeatured.title} cover image`}
                   fill
                   unoptimized
-                  sizes="(max-width: 1024px) 100vw, 60vw"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 60vw"
                   className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                 />
               ) : (
@@ -91,18 +91,18 @@ export default function FeaturedResurrections({
 
               {/* Epitaph Pull-quote overlapping lower edge with gradient scrim */}
               {mainFeatured.epitaph && (
-                <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-surface via-surface/80 to-transparent z-10">
-                  <p className="font-serif italic text-white text-xl sm:text-[22px] leading-snug drop-shadow-md">
+                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 bg-gradient-to-t from-surface via-surface/80 to-transparent z-10">
+                  <p className="font-serif italic text-white text-lg sm:text-xl lg:text-[22px] leading-snug drop-shadow-md break-anywhere">
                     &ldquo;{mainFeatured.epitaph}&rdquo;
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Content Area (28px padding) */}
-            <div className="p-7 flex flex-col flex-1 justify-between">
+            {/* Content Area */}
+            <div className="p-5 sm:p-7 flex flex-col flex-1 justify-between min-w-0">
               <div>
-                <h3 className="font-sans font-semibold text-2xl sm:text-[28px] text-white leading-tight">
+                <h3 className="font-sans font-semibold text-xl sm:text-2xl lg:text-[28px] text-white leading-tight break-anywhere">
                   <Link
                     href={`/project/${mainFeatured.id}`}
                     className="relative no-underline inline-block after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:bg-white after:origin-left after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-200"
@@ -111,7 +111,7 @@ export default function FeaturedResurrections({
                   </Link>
                 </h3>
 
-                <p className="font-sans text-sm sm:text-base text-fg/80 mt-2.5 line-clamp-2 leading-relaxed">
+                <p className="font-sans text-sm sm:text-base text-fg/80 mt-2.5 line-clamp-2 leading-relaxed break-anywhere">
                   {mainFeatured.tagline || mainFeatured.description}
                 </p>
 
@@ -146,8 +146,8 @@ export default function FeaturedResurrections({
             </div>
           </div>
 
-          {/* Two Compact Cards: cols 8-12, exactly 300px each on lg */}
-          <div className="lg:col-span-5 flex flex-col gap-6 lg:h-[624px] justify-between">
+          {/* Two Compact Cards: cols 8-12 on lg, side by side on md, stacked on mobile */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-5 grid grid-cols-1 md:grid-cols-2 lg:flex lg:flex-col gap-6 lg:min-h-[624px] justify-between">
             {sideCards.map((project) => {
               const tombstone = formatEpitaph(project);
               const visibleTechs = (project.tech_stack || []).slice(0, 3);
@@ -156,17 +156,17 @@ export default function FeaturedResurrections({
               return (
                 <div
                   key={project.id}
-                  className="lg:h-[300px] group relative rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden flex flex-col sm:flex-row"
+                  className="@container lg:h-[300px] group relative rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden flex flex-col @[420px]:flex-row justify-between min-w-0"
                 >
-                  {/* Left Column: Cover 42% width stretching to full card height */}
-                  <div className="relative w-full sm:w-[42%] min-h-[160px] sm:min-h-full self-stretch overflow-hidden bg-surface-2 shrink-0">
+                  {/* Cover: full width aspect-ratio on mobile, 42% on wide container */}
+                  <div className="relative w-full @[420px]:w-[42%] aspect-[16/10] @[420px]:aspect-auto min-h-[160px] @[420px]:min-h-full self-stretch overflow-hidden bg-surface-2 shrink-0">
                     {project.cover_url ? (
-                      <Image
+                      <Img
                         src={project.cover_url}
-                        alt={project.title}
+                        alt={`${project.title} cover image`}
                         fill
                         unoptimized
-                        sizes="(max-width: 640px) 100vw, 260px"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 260px"
                         className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
                       />
                     ) : (
@@ -178,11 +178,11 @@ export default function FeaturedResurrections({
                     )}
                   </div>
 
-                  {/* Right Column: Content (20px padding) */}
-                  <div className="flex flex-col justify-between flex-1 p-5 overflow-hidden">
+                  {/* Content (20px padding) */}
+                  <div className="flex flex-col justify-between flex-1 p-4 sm:p-5 overflow-hidden min-w-0">
                     <div className="space-y-2">
                       {/* Top row: Mode pill + completion_percent chip */}
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <ModeBadge mode={project.interaction_type} size="sm" />
                         {project.completion_percent != null && (
                           <span className="font-mono text-[10px] text-muted px-2 py-0.5 rounded-full bg-surface-2 border border-line tabular-nums">
@@ -191,8 +191,8 @@ export default function FeaturedResurrections({
                         )}
                       </div>
 
-                      {/* Title (Geist 600, 20px, 1 line clamp, no default underline) */}
-                      <h4 className="font-sans font-semibold text-lg sm:text-xl text-white truncate">
+                      {/* Title */}
+                      <h4 className="font-sans font-semibold text-base sm:text-lg text-white truncate break-anywhere">
                         <Link
                           href={`/project/${project.id}`}
                           className="relative no-underline inline-block after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:bg-white after:origin-left after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-200 truncate max-w-full"
@@ -201,8 +201,8 @@ export default function FeaturedResurrections({
                         </Link>
                       </h4>
 
-                      {/* Tagline / description (3 line clamp) */}
-                      <p className="font-sans text-xs text-fg/80 line-clamp-2 sm:line-clamp-3 leading-relaxed">
+                      {/* Tagline / description */}
+                      <p className="font-sans text-xs text-fg/80 line-clamp-2 sm:line-clamp-3 leading-relaxed break-anywhere">
                         {project.tagline || project.description}
                       </p>
 
@@ -220,7 +220,7 @@ export default function FeaturedResurrections({
                         </div>
                       )}
 
-                      {/* Tombstone line (mono 12px, muted, 1 line clamp) */}
+                      {/* Tombstone line */}
                       {tombstone && (
                         <p className="font-mono text-[11px] text-muted truncate pt-0.5">
                           {tombstone}
@@ -252,9 +252,9 @@ export default function FeaturedResurrections({
             >
               <div className="relative w-full h-[260px] overflow-hidden bg-surface-2 shrink-0">
                 {project.cover_url ? (
-                  <Image
+                  <Img
                     src={project.cover_url}
-                    alt={project.title}
+                    alt={`${project.title} cover image`}
                     fill
                     unoptimized
                     sizes="(max-width: 768px) 100vw, 50vw"
@@ -313,9 +313,9 @@ export default function FeaturedResurrections({
         <div className="group relative rounded-card bg-surface border border-line hover:border-white/20 transition-colors duration-200 overflow-hidden flex flex-col md:flex-row min-h-[400px]">
           <div className="relative w-full md:w-1/2 min-h-[260px] md:min-h-full overflow-hidden bg-surface-2 shrink-0">
             {mainFeatured.cover_url ? (
-              <Image
+              <Img
                 src={mainFeatured.cover_url}
-                alt={mainFeatured.title}
+                alt={`${mainFeatured.title} cover image`}
                 fill
                 unoptimized
                 sizes="(max-width: 768px) 100vw, 50vw"

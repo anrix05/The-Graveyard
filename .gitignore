@@ -31,3 +31,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agents & skills
+.agents/
+.agent/
+skills-lock.json
+
+# brag video generation outputs
+brag-output/
+*.brag.*
+

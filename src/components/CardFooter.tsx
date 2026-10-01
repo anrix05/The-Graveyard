@@ -49,9 +49,9 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   };
 
   return (
-    <div className={`pt-4 border-t border-line flex items-center justify-between gap-3 relative z-20 ${className}`}>
-      {/* Left: Seller avatar (28px) + @username (Geist 500, 14px, truncates with ellipsis) */}
-      <div className="flex items-center gap-2.5 min-w-0">
+    <div className={`pt-4 border-t border-line flex items-center justify-between gap-2.5 relative z-20 w-full min-w-0 ${className}`}>
+      {/* Left: Seller avatar (28px) + @username (truncates first) */}
+      <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
         <Avatar
           src={seller?.avatar_url}
           username={username}
@@ -60,14 +60,14 @@ export const CardFooter: React.FC<CardFooterProps> = ({
         />
         <span
           title={`@${username}`}
-          className="font-sans font-medium text-sm text-muted hover:text-white transition-colors truncate max-w-[120px] sm:max-w-[150px]"
+          className="font-sans font-medium text-xs sm:text-sm text-muted hover:text-white transition-colors truncate min-w-0"
         >
           @{username}
         </span>
       </div>
 
-      {/* Right: Price/Label + 40px Circular Arrow Button */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Right: Price/Label + Circular Arrow Button (never overflows) */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {renderPriceOrLabel()}
 
         <Link
@@ -79,7 +79,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             }
           }}
           aria-label={`View ${title}`}
-          className="w-10 h-10 rounded-full border border-line bg-surface-2 hover:bg-white hover:text-black flex items-center justify-center text-white/80 transition-all duration-200 group/btn shrink-0"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-line bg-surface-2 hover:bg-white hover:text-black flex items-center justify-center text-white/80 transition-all duration-200 group/btn shrink-0"
         >
           <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover/btn:translate-x-[3px]" />
         </Link>

@@ -66,12 +66,25 @@ In The Graveyard V2, dead projects don't hide their demise—they celebrate it. 
 - **Badges**: All badges are pills (`rounded-full`) with a colored status dot.
 - **No Chamfers**: `CyberFrame` and chamfered clip-paths have been completely retired.
 
-### Performance Governor & Motion Tiers (`data-perf`)
-The application automatically assesses hardware and network capabilities to ensure a rock-solid 60fps experience:
-- **`high` Tier**: Full experience — hero canvas (60 particles @ 30fps), centered custom cursor ring, view transitions, Lenis smooth scroll, magnetic controls.
-- **`mid` Tier**: Hero canvas (35 particles @ 30fps), native cursor, no magnetic controls, no view transitions, Lenis smooth scroll active.
-- **`low` Tier / Reduced Motion**: No canvas (static radial glow), native scroll (Lenis destroyed), no cursor, no magnetic, CSS opacity-only reveals, static marquee.
-- **Manual Override**: Set `NEXT_PUBLIC_PERF_FORCE=high|mid|low` in your `.env.local` or switch live on `/design-system`.
+### Performance Governor & Motion Tiers (`data-perf`) (v2.7)
+The application automatically assesses hardware and network capabilities to ensure a rock-solid experience across all devices:
+- **`high` Tier**: Desktop with high hardware concurrency (>4 cores, >4GB RAM). Full experience — hero canvas (55 particles @ 30fps), dynamic legibility mask, pointer repulsion, custom cursor ring, view transitions, Lenis smooth scroll, magnetic controls.
+- **`mid` Tier**: Mobile, touch devices (`pointer: coarse`), or modest desktop hardware (<=4 cores or <=4GB RAM). Lightweight mobile canvas (20–26 particles @ 24fps cap, DPR 1.0, scroll velocity response, touch ripple), dynamic legibility mask, native cursor, Lenis smooth scroll active.
+- **`low` Tier / Reduced Motion**: Battery saver (<20% battery & not charging), `connection.saveData`, `prefers-reduced-motion`, or low hardware (<=2 cores or <=2GB RAM). Pure CSS fallback (drifting ambient glow + 10 floating glyphs in safe zones) or static gradient. Zero JS frame loops, native scrolling, no magnetic effects.
+- **Manual Overrides**:
+  - `NEXT_PUBLIC_PERF_FORCE=high|mid|low`: Overrides device detection.
+  - `NEXT_PUBLIC_HERO_FX=canvas|css|static`: Enforces specific hero motion mode.
+  - URL Query `?fx=canvas|css|static`: Live override for testing share cards and rendering states.
+  - Live switcher on `/design-system` (supports live preview of canvas-desktop, canvas-mobile, css, static, and auto).
+
+### 🌌 Hero FX Modes (v2.7)
+
+| Mode | Target Devices / Conditions | Rendering & Performance |
+|---|---|---|
+| **`canvas-desktop`** | Desktop, fine pointer, `high` tier | 55 particles @ 30fps, DPR up to 1.25, pointer repulsion, dynamic text mask, offscreen sprite atlas. |
+| **`canvas-mobile`** | Mobile, tablets, touch (`pointer: coarse`), `mid`/`high` tier | Lightweight 20–26 particles @ 24fps cap, DPR 1.0, scroll velocity vertical nudge, touch ripple (~600ms), dynamic text mask, URL-bar-collapse debounced resizing (>120px threshold). |
+| **`css`** | Low battery (<20% unplugged), `saveData`, `low` tier, or governor self-protection fallback | Pure CSS transforms and opacity only. Ambient red glow drift (18s) + 10 floating glyph spans in perimeter safe zones (outer 18% and top/bottom bands). Zero JavaScript frame loop. |
+| **`static`** | `prefers-reduced-motion: reduce` or explicit static override | Completely static ambient red gradient. Zero glyph motion, zero canvas. |
 
 > **Note on Performance Testing:** Motion performance must be evaluated on a production build (`npm run perf`), not `next dev`. Next.js development overhead and hot-reloading tooling introduce artificial frame drops that are absent in production.
 
@@ -250,6 +263,74 @@ Every single demo project includes a real downloadable `.zip` archive stored in 
 
 ---
 
+## 🔐 Authentication (v2.4)
+
+The Graveyard uses **Supabase Auth** with a unified split-screen authentication architecture:
+
+### Supported Providers
+1. **GitHub OAuth**: Fast developer authentication. Stores the user's GitHub username in `profiles.github_url` for repo collaborator automation.
+2. **Google OAuth**: One-click social sign-in.
+3. **Email + Password**: Full form validation with Zod, live password strength meter on sign-up, and accessible Caps Lock detection.
+4. **Magic Link (Passwordless OTP)**: Direct passwordless sign-in via `supabase.auth.signInWithOtp()`.
+
+### Supabase Redirect URL Configuration
+In your Supabase Dashboard under **Authentication → URL Configuration → Redirect URLs**, add:
+- `http://localhost:3000/auth/callback`
+- `https://graveyard.anrix.me/auth/callback`
+- `https://your-production-domain.com/auth/callback`
+
+### Safe Redirect & Intent Protection (`lib/safe-redirect.ts`)
+- **Open-Redirect Hardening**: All post-authentication redirects pass through `getSafeNext()`. It strictly allows only relative same-origin paths starting with a single `/`. Protocol-relative URLs (`//evil.com`), backslashes (`/\evil.com`), URI schemes (`https:`, `javascript:`), and encoded variations (`%2f`, `%5c`) are rejected and safely defaulted to `/dashboard`.
+- **Action Intent Preservation**: Action intents (`buy`, `claim`, `apply`, `message`) are whitelisted via `getSafeIntent()`. Upon completing authentication, users are redirected back to the exact project card with their intended modal automatically engaged.
+
+### Demo Mode Sandbox
+When `NEXT_PUBLIC_DEMO_MODE=true`, the auth screen exposes quick-login sandbox pills:
+- **Try as demo buyer**: Instant login prefilled with purchased assets in the vault.
+- **Try as demo seller**: Instant login owning live listings with simulated earnings.
+
+---
+
+## 📱 Responsive Design (v2.5)
+
+The Graveyard is engineered for fluid responsiveness across phones, tablets, laptops, desktops, and 4K ultrawide monitors (320px to 3840px+), supporting any browser zoom and input modality.
+
+### Breakpoint Matrix
+- `xs`: `380px` (compact mobile phones)
+- `sm`: `640px` (large phones / phablets)
+- `md`: `768px` (tablets / iPad portrait)
+- `lg`: `1024px` (tablets landscape / compact laptops)
+- `xl`: `1280px` (standard laptops)
+- `2xl`: `1536px` (desktop monitors)
+- `3xl`: `1920px` (Full HD displays)
+- `4xl`: `2560px` (2K QHD & 4K UHD ultrawide displays)
+
+### Container & Layout Rules
+- **Fluid Gutters**: `clamp(16px, 4vw, 48px)` outer padding.
+- **Max Content Widths**: Capped at `1280px` up to `2xl`, expanding to `1440px` at `3xl`, and `1600px` at `4xl`+, centered with full-bleed atmospheric backgrounds.
+- **No Fixed Heights**: All text containers use `min-height` with `overflow-wrap: anywhere` and `hyphens: auto`. Flex/grid items include `min-w-0` to prevent horizontal blowouts.
+- **Dynamic Viewport Units**: Uses `100dvh` and `svh` throughout to eliminate mobile browser navigation bar jumps.
+- **Safe Area Insets**: Native `env(safe-area-inset-*)` utilities (`safe-pt`, `safe-pb`, `safe-pl`, `safe-pr`, `safe-p`) applied across navigation headers, sticky bottom action bars, modals, sheets, and the intro overlay.
+
+### Container Queries (`@tailwindcss/container-queries`)
+- Components adapt based on their own element width rather than only global viewport width:
+  - **`ProjectCard`**: Fluid metadata badges and seller attribution.
+  - **`FeaturedResurrections`**: Compact bento cards switch dynamically from horizontal to vertical layout when their container width drops below 420px.
+  - **`CardFooter`**: Seller username truncates first while price/label and circular arrow action remain fixed on a single line with zero wrap.
+
+### Mobile Bottom Sheets & Sticky Bars
+- **Bottom Sheets**: Below `sm` (640px), dialogs (`PaymentModal`, `CollabRequestModal`, `ConfirmDialog`, `FilterBar` filter drawer) convert into touch-friendly bottom sheets featuring top grab handles, `max-height: 90-92dvh`, internal scrolling, body scroll locking, and sticky action buttons.
+- **Sticky Bottom Action Bars**:
+  - Detail page (`/project/[id]`): Converts the right-hand action card into a bottom-pinned bar on `< lg` with price/label and instant purchase button.
+  - Submit wizard (`/submit`): Pinned next/prev navigation bar with safe-area padding.
+  - Dashboard (`/dashboard`): 5-item mobile tab bar with a "More" drawer sheet for secondary tabs.
+  - Messages (`ChatInterface`): Full-screen message view with back button on `< lg`, anchored scroll, and keyboard-aware sticky composer (`visualViewport`).
+
+### Developer Tools
+- **Viewport Badge (`components/dev/ViewportBadge.tsx`)**: Fixed bottom-left badge displaying current dimensions (`width×height`), active breakpoint name, DPR, and performance governor tier. Active in development, with `?debug=viewport`, or toggled via <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd>.
+- **Responsive Simulator (`/design-system/responsive`)**: In-browser device-frame preview tool featuring 13 viewport presets (320×568 up to 3440×1440), custom width/height inputs, orientation rotation, scale-to-fit toggle, and route selector. Protected with same-origin framing (`SAMEORIGIN`).
+
+---
+
 ## 🛣️ Known Limitations / Production Roadmap
 
 1. **Automated Seller Payouts (Razorpay Route)**: Splitting marketplace commissions and transferring net seller funds automatically to connected bank accounts.
@@ -269,3 +350,55 @@ Every single demo project includes a real downloadable `.zip` archive stored in 
 - [Privacy Policy](/privacy)
 - [Design System](/design-system)
 - *Notice: All payments occur in Razorpay Test Mode. No real financial transactions are executed.*
+
+---
+
+## 🚀 Launch Checklist (v2.6)
+
+| # | Item | Status | Implementation Details |
+|---|---|---|---|
+| 1 | Custom 404 | Completed | `src/app/not-found.tsx` with search input (`/?q=`), dual CTAs, and `noindex`. |
+| 2 | CTA above the fold | Completed | Home, Project Detail, Wizard, Login, Dashboard, Contact, 404, Orders. |
+| 3 | Meta title per page | Completed | `title.template: %s · The Graveyard` in root layout, unique titles across all pages. |
+| 4 | Meta description per page | Completed | Curated descriptions (≤155 chars) on all routes. |
+| 5 | Open Graph & Twitter image | Completed | Default dynamic OG (`src/app/opengraph-image.tsx`) + project-specific card (`src/app/project/[id]/opengraph-image.tsx`). |
+| 6 | Favicon set & Manifest | Completed | Vector SVG (`icon.svg`), Apple touch icon (180×180), multi-size ICO (`favicon.ico`), 192/512 PNGs, maskable icon, web manifest (`src/app/manifest.ts`). |
+| 7 | robots.txt | Completed | `src/app/robots.ts` disallowing private routes (`/api/`, `/dashboard`, `/orders/`, `/submit`, `/collab/`, `/auth/`, `/login`, etc.). |
+| 8 | sitemap.xml | Completed | Dynamic sitemap (`src/app/sitemap.ts`) querying non-archived projects with anon client, capped at 5,000 URLs, priority scores. |
+| 9 | Alt text on every image | Completed | `src/components/ui/Img.tsx` enforcing non-empty `alt` or `decorative: true`. `eslint-plugin-jsx-a11y/alt-text` enforced as error. |
+| 10 | Mobile breakpoints | Completed in v2.5 | Fluid typography, container queries, and support from 320px to 4K displays. |
+| 11 | Sticky mobile CTA | Completed in v2.5 | Project detail sticky bar (`src/app/project/[id]/page.tsx`) and submit wizard bar. |
+| 12 | Loading states | Completed | Dedicated `loading.tsx` across async routes (`/orders/[id]`, `/submit/success`, `/collab/sent`, `/contact`). |
+| 13 | Form error states | Completed | Consistent inline error display with `AlertTriangle`, `aria-describedby`, `aria-live="polite"`, and `role="alert"`. |
+| 14 | Thank-you pages | Completed | Auth-gated confirmation routes: `/orders/[transactionId]`, `/submit/success`, `/collab/sent`. |
+| 15 | Privacy policy page | Completed | Comprehensive plain-language disclosure (`src/app/privacy/page.tsx`) with demonstration notice and TOC. |
+| 16 | Terms of Use page | Completed | Detailed terms (`src/app/terms/page.tsx`) covering test-mode payments, code licenses, and takedowns. |
+| 17 | Cookie banner | Completed | Non-blocking bottom consent notice (`src/components/legal/ConsentNotice.tsx`) with analytics opt-out switch. |
+| 18 | Cookieless analytics | Completed | `@vercel/analytics` + `@vercel/speed-insights` integration with typed event wrapper (`src/lib/analytics.ts`), respecting DNT/GPC. |
+| 19 | Real contact address | Completed | `/contact` route with mailto copy card, GitHub repo issues link, prefilled listing takedown intent, and footer links. |
+| 20 | Compressed images | Completed | Client-side compression pipeline (`src/lib/image-compression.ts`), WebP conversions (≤300KB), Next config AVIF/WebP, WebP seeds. |
+
+### Environment Variables
+Configure the following in `.env.local` / deployment settings:
+- `NEXT_PUBLIC_SITE_URL`: Full origin URL (`https://the-graveyard.vercel.app` or custom domain) used for `metadataBase`, sitemaps, and canonical links.
+- `NEXT_PUBLIC_CONTACT_EMAIL`: Public contact address shown on Contact, Privacy, and Terms pages.
+- `NEXT_PUBLIC_GITHUB_URL`: Project repository or profile URL.
+- `NEXT_PUBLIC_LINKEDIN_URL`: Optional company LinkedIn profile URL.
+- `NEXT_PUBLIC_ANALYTICS_ENABLED`: Set to `false` to disable tracking entirely (always disabled in development).
+
+### Social Share Previews
+To validate Open Graph cards and Twitter previews:
+- **Facebook Sharing Debugger**: `https://developers.facebook.com/tools/debug/`
+- **LinkedIn Post Inspector**: `https://www.linkedin.com/post-inspector/`
+- **X / Twitter Card Validator**: `https://cards-dev.twitter.com/validator`
+*(Note: Social platforms cache fetched previews aggressively; use platform scraper tools to refresh cache after deployments).*
+
+### Content Security Policy (CSP)
+In production, a `Content-Security-Policy-Report-Only` header is delivered allowing Razorpay checkout, Supabase realtime webhooks, and Vercel analytics while reporting any non-compliant assets.
+> **Note**: Tighten and switch this header to enforcing mode (`Content-Security-Policy`) after verifying live production report endpoints.
+
+### Lighthouse Target Benchmarks (Production Build)
+- **SEO**: ≥ 95
+- **Accessibility**: ≥ 95
+- **Best Practices**: ≥ 95
+- **Performance (Mobile)**: ≥ 85
