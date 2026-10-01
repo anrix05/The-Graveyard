@@ -49,12 +49,6 @@ export const Footer: React.FC = () => {
                     Design system
                   </Link>
                 </li>
-                <li>
-                  <Link href="/design-system/responsive" className="text-fg/80 hover:text-brand-red transition-colors inline-flex items-center gap-1.5">
-                    <span>Responsive preview</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand-red/10 text-brand-red border border-brand-red/20">v2.6</span>
-                  </Link>
-                </li>
               </ul>
             </div>
 

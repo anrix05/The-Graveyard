@@ -402,3 +402,35 @@ In production, a `Content-Security-Policy-Report-Only` header is delivered allow
 - **Accessibility**: ≥ 95
 - **Best Practices**: ≥ 95
 - **Performance (Mobile)**: ≥ 85
+
+---
+
+## 🎛️ Operative Console / Dashboard (v2.8)
+
+The Console (`/dashboard`) provides a calm, productive workspace for developers managing published listings, acquired code, collaborative pitches, and conversations:
+
+1. **Unified Shell (`DashboardShell`):**
+   - **Desktop (≥ 1024px):** Fixed 264px left sidebar (`ConsoleSidebar`) and main column with a sticky 64px topbar (`ConsoleTopbar`). Global marketing header and footer are omitted.
+   - **Mobile (< 1024px):** Sticky compact topbar + fixed bottom navigation bar (`ConsoleBottomNav`) with safe-area insets and "More" action sheet.
+   - **Consistent Width:** Identical maximum content container width (1200px / 1280px at 3xl) and gutters across all console views.
+
+2. **Navigation & Route Synced Parameters:**
+   - `?tab=overview`: Metrics grid (6 cards), profile completion checklist, and recent activity.
+   - `?tab=listings`: Filterable repository table with live/sold/filled badges and quick action menus.
+   - `?tab=vault`: Acquired codebases, secure ZIP downloads, and automated GitHub collaborator status retries.
+   - `?tab=sales`: Real-time order log with rupee formatting (`formatINR`) and test-mode settlement pills.
+   - `?tab=collabs`: Pitch management with URL-synced subtabs (`?subtab=received|sent`).
+   - `?tab=messages`: Two-pane real-time communication system with auto-scroll and offline reconnecting badges.
+   - `?mode=collab|adopt|buy`: Supported on `/submit` (preselects listing mode) and `/` (filters marketplace).
+
+3. **Single CTA Contract:**
+   - Exactly one primary CTA on each console page: **`New listing`** (white pill in the topbar).
+
+4. **Self-Service Account Deletion (`/api/account/delete`):**
+   - Requires confirming by re-typing the user's handle.
+   - Validates user session via server-side Bearer token (never trusts client ID).
+   - Anonymizes profile (`username = deleted_<shortid>`, clears bio/avatar/contact/UPI/phone).
+   - Archives all user listings (`is_archived = true`).
+   - Preserves historical purchase transactions so previous buyers retain download access.
+   - Permanently disables authentication via Supabase Admin API ban duration (`876000h`).
+

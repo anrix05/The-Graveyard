@@ -54,6 +54,16 @@ To get the full system running locally with seeded data, execute commands in thi
    - **Enumeration-safe errors:** Auth failures map to generic messages ("Email or password is incorrect", "Too many attempts. Try again in a few minutes") preventing email enumeration.
    - **Password meter & Caps Lock:** 4-segment visual meter with text labels ("Weak", "Okay", "Strong") and dynamic `getModifierState('CapsLock')` indicator.
    - **Companion pages:** Reused `AuthShell` across `/login`, `/forgot-password`, `/reset-password`, `/auth/check-email`, and `/onboarding` for cohesive design tokens.
+8. **v2.8 Operative Console Redesign Assumptions:**
+   - **Global Header Removal in Console:** The global marketing `Header` and `Footer` are strictly excluded from all console pages. The console uses a dedicated `DashboardShell` with a fixed left sidebar on desktop (`264px` wide, full height) and a sticky `64px` topbar.
+   - **Header Height Reserving Tokens:** Defined `--header-h: 68px` (desktop), `60px` (mobile), and `52px` (landscape short) and `--topbar-h: 64px` (desktop), `60px` (mobile), and `52px` (landscape short) in `src/index.css`.
+   - **Single CTA Everywhere in Console:** Exactly one primary CTA in the console topbar: `New listing` (`rounded-full bg-white text-black font-semibold`). Empty states provide context-specific secondary actions ("Create your first listing", "Create a collab listing").
+   - **Currency & Stat Card Alignment:** Removed the decorative "Security status" card. Overview grid displays 6 aligned stat cards (2 cols mobile, 3 cols tablet, 6 cols xl). Replaced all `DollarSign` / `$` icons with `IndianRupee` and formatted all values via `formatINR`. Zero values are neutral white without colored text.
+   - **Profile Completion Checklist:** A dismissible checklist on the Overview page evaluates 5 items (username, bio, avatar, contact handle, first listing). Auto-generated handles matching `^[a-z0-9.]+_\d{3,4}$` are flagged for custom handle selection. Dismissal is persisted per user id in `localStorage`.
+   - **Collabs Subtabs:** Replaced stacked sections with URL-synced subtabs (`?subtab=received|sent`) featuring sliding pill animation and count badges.
+   - **Connection Indicator:** Replaced always-on green "Live" badge with an offline/reconnecting indicator (amber dot) that only renders when the network is offline or reconnecting.
+   - **Account Deletion & Data Privacy:** Self-service deletion (`/api/account/delete`) validates confirmation by matching typed username, anonymizes user profile (`deleted_<shortid>`), archives all active listings, preserves completed transaction records for previous buyers, and bans the auth user via Supabase Admin API.
+   - **Consistent Username Display:** Centralized handle rendering through `getDisplayHandle(profile)` across sidebar, header, topbar, messages, and cards.
 
 ---
 

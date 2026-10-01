@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Operative Console · Dashboard',
-  description: 'Manage your listed codebases, acquired projects, vault keys, and transmissions.',
+  title: 'Console · Dashboard',
+  description: 'Manage your listed codebases, acquired projects, vault keys, and messages.',
   robots: {
     index: false,
     follow: false,

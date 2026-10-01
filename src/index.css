@@ -20,12 +20,30 @@
     --accent-collab: #3b82f6;
     --accent-danger: #dc2626;
 
+    /* Layout Tokens */
+    --header-h: 68px;
+    --topbar-h: 64px;
+
     /* Motion Tokens */
     --dur-micro: 150ms;
     --dur-base: 300ms;
     --dur-reveal: 500ms;
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+
+  @media (max-width: 1023px) {
+    :root {
+      --header-h: 60px;
+      --topbar-h: 60px;
+    }
+  }
+
+  @media (max-height: 500px) and (orientation: landscape) {
+    :root {
+      --header-h: 52px;
+      --topbar-h: 52px;
+    }
   }
 
   * {
@@ -49,6 +67,19 @@
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     position: relative;
+  }
+
+  /* Layout offsets & scroll margins */
+  body:not(:has([data-console-shell])) [id="main"] {
+    scroll-margin-top: var(--header-h);
+  }
+
+  [data-console-shell] [id="main"] {
+    scroll-margin-top: var(--topbar-h);
+  }
+
+  .non-console-layout {
+    padding-top: var(--header-h);
   }
 
   button, input, select, textarea {

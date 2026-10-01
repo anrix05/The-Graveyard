@@ -215,16 +215,6 @@ export default function DesignSystemPage() {
 
           {/* Actions & Live Switchers */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <Link href="/design-system/responsive">
-              <Button
-                variant="secondary"
-                mode="brand"
-                size="sm"
-                leftIcon={<Users className="w-3.5 h-3.5" />}
-              >
-                Responsive Simulator
-              </Button>
-            </Link>
 
             {/* Perf Tier Switcher */}
             <div className="flex items-center gap-1.5 p-1.5 bg-surface rounded-full border border-line">

@@ -45,7 +45,7 @@ function CollabSentContent() {
   }, [projectId]);
 
   return (
-    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans pt-[var(--header-h)]">
       <Header />
 
       <main id="main" tabIndex={-1} className="flex-1 max-w-xl mx-auto w-full px-4 sm:px-6 py-12 sm:py-20 space-y-8 outline-none">
@@ -55,7 +55,7 @@ function CollabSentContent() {
           </div>
 
           <span className="font-mono text-xs text-[#60a5fa] uppercase tracking-widest font-semibold block">
-            Application Transmitted
+            Application Sent
           </span>
 
           <h1 className="text-3xl sm:text-4xl font-display font-semibold text-white">

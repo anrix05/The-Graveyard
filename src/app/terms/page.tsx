@@ -21,7 +21,7 @@ export default function TermsPage() {
   const isEmail = Boolean(CONTACT_EMAIL);
 
   return (
-    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans pt-[var(--header-h)]">
       <div className="print:hidden">
         <Header />
       </div>

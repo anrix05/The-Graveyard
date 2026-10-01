@@ -22,7 +22,7 @@ export default function PrivacyPage() {
   const isEmail = Boolean(CONTACT_EMAIL);
 
   return (
-    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans pt-[var(--header-h)]">
       <div className="print:hidden">
         <Header />
       </div>
@@ -158,7 +158,7 @@ export default function PrivacyPage() {
               6. Your privacy rights
             </h2>
             <p>
-              You have the right to request access to your personal data, rectify incorrect information, or request full account deletion. To exercise any of these rights, contact us at{' '}
+              You have the right to request access to your personal data, rectify incorrect information, or delete your account. You can permanently delete and anonymize your account at any time directly via self-service in <strong>Console &gt; Settings &gt; Danger zone</strong>. This immediately anonymizes your public profile, archives all active code listings, and revokes login access, while preserving purchase records so buyers retain their purchased downloads. You may also contact us at{' '}
               {isEmail ? (
                 <a href={`mailto:${CONTACT_EMAIL}`} className="text-white underline hover:text-brand-red">
                   {CONTACT_EMAIL}

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload,
   Check,
@@ -66,8 +66,9 @@ const COLLAB_TERMS_OPTIONS = [
 
 const LICENSE_OPTIONS = ['MIT', 'Apache-2.0', 'GPL-3.0', 'BSD-3-Clause', 'Proprietary', 'Unlicense'];
 
-export default function SubmitWizardPage() {
+function SubmitWizardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -150,6 +151,18 @@ export default function SubmitWizardPage() {
       // Ignore
     }
   }, []);
+
+  // Support ?mode=collab | adopt | buy query param (overrides draft type if query specified)
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    if (mode === 'collab') {
+      setInteractionType('collab');
+    } else if (mode === 'adopt' || mode === 'free') {
+      setInteractionType('adopt');
+    } else if (mode === 'buy' || mode === 'sale') {
+      setInteractionType('buy');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     try {
@@ -656,7 +669,7 @@ export default function SubmitWizardPage() {
   });
 
   return (
-    <div className="min-h-dvh bg-bg text-white flex flex-col">
+    <div className="min-h-dvh bg-bg text-white flex flex-col pt-[var(--header-h)]">
       <Header />
 
       <main id="main" tabIndex={-1} className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 outline-none">
@@ -1796,3 +1809,12 @@ export default function SubmitWizardPage() {
     </div>
   );
 }
+
+export default function SubmitWizardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-bg" />}>
+      <SubmitWizardInner />
+    </Suspense>
+  );
+}
+

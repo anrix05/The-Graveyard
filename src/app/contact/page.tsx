@@ -50,7 +50,7 @@ function ContactContent() {
   const reportMailto = `mailto:${CONTACT_EMAIL || 'support@graveyard.dev'}?subject=${reportSubject}&body=${reportBody}`;
 
   return (
-    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans pt-[var(--header-h)]">
       <Header />
 
       <main id="main" tabIndex={-1} className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-12 sm:py-20 space-y-12 outline-none">

@@ -534,6 +534,110 @@ Use this checklist to verify all features, user flows, database constraints, mot
 - [ ] **Viewport Badge (Dev Mode / `?debug=viewport`):**
   - Verify the badge displays the active Hero FX mode (e.g., `MD | 440×956 | 2x | MID | canvas-mobile`).
 
+---
+
+## 9. v2.8 Operative Console / Dashboard Verification Checklist
+
+### 9.1 Desktop Viewports & Layout Shell
+- [ ] **Viewport Tests (1920×1080, 1440×900, 1366×768, 1024×768):**
+  - Verify zero content collision or overlap with any fixed chrome.
+  - Verify fixed left sidebar (`264px`) is flush to the left edge across all console views.
+  - Verify sticky topbar (`64px`, `--topbar-h`) stays sticky without overlapping content beneath it.
+  - Verify identical page container width (max 1200px / 1280px at 3xl) and gutters across Overview, My listings, Vault, Sales, Collabs, Messages, and Settings.
+  - Verify the global marketing `<Header>` and `<Footer>` are **not** rendered in the console.
+
+### 9.2 Sidebar & Topbar Single CTA
+- [ ] **ConsoleSidebar Anatomy:**
+  - Brand header: Skull mark + "The Graveyard" linking to `/`, plus micro-label `CONSOLE`.
+  - Nav items: Overview, My listings, Vault, Sales (IndianRupee icon), Collabs, Messages, Settings.
+  - Active nav item has `bg-white/8`, white text, and a 3px brand red (`#ff2a2a`) left accent bar animated via Framer Motion.
+  - Live count badges render on Messages (unread) and Collabs (pending received pitches); hidden when 0.
+  - Bottom user card: avatar, `@username` with ellipsis and tooltip (never mono), email, and dropdown menu with "View public profile", "Settings", and "Sign out".
+  - Ghost link: `← Back to site`.
+  - Confirm **no "Online" green dot, no red operative label, and no CTA button in the sidebar**.
+- [ ] **ConsoleTopbar:**
+  - Left breadcrumb: `Console / <Section>` in muted Geist font.
+  - Right: `<NotificationBell>` with unread dot + single primary CTA **`New listing`** (white pill).
+
+### 9.3 Overview Page
+- [ ] **Six-Card Stat Grid:**
+  - Exactly 6 stat cards: `Earnings (test mode)`, `Active listings`, `Sales`, `Claims`, `Collab requests`, `Unread messages`.
+  - 2 columns on mobile, 3 on tablet, 6 on `xl+` (no orphan card).
+  - Aligned number heights with `tabular-nums` in display font; zero values remain neutral white.
+  - Money cards use `IndianRupee` and `formatINR`.
+  - Confirm **the "Security status" card is completely deleted**.
+- [ ] **Complete Your Profile Checklist:**
+  - Appears at top when profile is incomplete (flags auto-generated handles `^[a-z0-9.]+_\d{3,4}$`).
+  - Shows progress bar (`x of 5`) and links to Settings or Submit.
+  - Dismiss button persists in `localStorage` per user id; hides when complete.
+- [ ] **Recent Sales & Collab Requests:**
+  - Up to 5 items each with `View all →` links.
+  - Empty states display icon, title, description, and action buttons (`Create a listing` / `Create a collab listing` linking to `/submit?mode=collab`).
+
+### 9.4 My Listings, Vault & Sales
+- [ ] **My Listings:**
+  - Filter tabs: All, For sale, Free fork, Seeking partner.
+  - Search bar appears when listings > 5.
+  - Tombstone empty state with `Create your first listing` primary white button.
+  - Delete action opens `ConfirmDialog`.
+- [ ] **Vault:**
+  - Subtitle: "Projects you've bought or claimed."
+  - Shows download ZIP button, repository access status, and retry invite button for failed invites.
+  - Empty state: "Your vault is empty" + `Browse projects`.
+- [ ] **Sales:**
+  - Subtitle: "Everything you've sold or given away."
+  - Test mode pill, rupee formatted numbers, buyer handle via `getDisplayHandle`.
+  - Empty state with CTA.
+
+### 9.5 Collabs Page
+- [ ] **Subtabs (`?subtab=received|sent`):**
+  - Sliding pill indicator synced to URL query param.
+  - Shows count badges on each tab.
+- [ ] **Received Pitches:**
+  - Full pitch drawer/expand toggle, contact info, portfolio link.
+  - Accept, Reject, and Message actions.
+  - Empty state with `Create a collab listing`.
+- [ ] **Sent Applications:**
+  - Status badges (Pending, Accepted, Rejected, Withdrawn).
+  - Withdraw action for pending pitches; Message owner for accepted pitches.
+  - Empty state with `Browse seeking-partner projects`.
+
+### 9.6 Messages Page
+- [ ] **Plain Geist Text:** Zero `font-mono` on conversation body text or thread previews.
+- [ ] **Two-Pane Layout:** Independent scrolling for thread list and messages stream. Composer pinned at bottom.
+- [ ] **Reconnecting Indicator:** Amber dot + "Reconnecting..." appears only when offline; disappears when online.
+- [ ] **Empty States:** List empty state with `Browse projects`; conversation empty state: "Select a conversation".
+
+### 9.7 Settings Page & Account Deletion
+- [ ] **Profile Section:**
+  - Avatar upload compresses client-side; remove button restores default.
+  - Username uniqueness check is debounced (400ms) with character validation (3–24 chars).
+  - Bio with 160-character counter.
+- [ ] **Contact & Payouts:**
+  - Contact handle and portfolio URL with `Public` badge.
+  - UPI ID and phone number with `Private` badge and test-mode demo note.
+- [ ] **Unsaved Changes Bar:**
+  - Floats at bottom when form is dirty; `Discard` reverts; `Save changes` updates Supabase profile.
+  - `beforeunload` warning prevents accidental navigation.
+  - Handle updates across sidebar, header, and profile preview simultaneously.
+- [ ] **Sessions & Local Data:**
+  - `Sign out` (current device) and `Sign out everywhere` (global scope).
+  - `Clear saved drafts` clears local wizard drafts and consent preferences.
+- [ ] **Danger Zone (`Delete account`):**
+  - Requires re-typing current username to confirm.
+  - Dispatches POST to `/api/account/delete` with server-validated session.
+  - Anonymizes profile to `deleted_<shortid>`, archives listings, preserves buyer access, and disables auth.
+  - Signs out and redirects to `/` with success toast.
+
+### 9.8 Mobile & Touch Devices (< 1024px)
+- [ ] **ConsoleBottomNav:**
+  - Bottom bar shows Overview, Listings, Vault, Messages, and More.
+  - Safe-area insets respected (`safe-pb`).
+  - "More" button opens bottom sheet with Sales, Collabs, Settings, Back to site, and Sign out.
+- [ ] **Tables:** Reflow into stacked cards on screens < 768px.
+- [ ] **Touch Targets:** All buttons, pills, and nav tabs meet minimum 44px touch targets.
+
+
 
 
 

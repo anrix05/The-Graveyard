@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Bell, CheckCheck, ExternalLink, MessageSquare, DollarSign, Users, Sparkles } from 'lucide-react';
+import { Bell, CheckCheck, ExternalLink, MessageSquare, IndianRupee, Users, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Notification } from '@/types/notification';
@@ -77,7 +77,7 @@ export const NotificationBell: React.FC = () => {
   const getIcon = (type: string) => {
     switch (type) {
       case 'sale':
-        return <DollarSign className="w-3.5 h-3.5 text-[#39ff14]" />;
+        return <IndianRupee className="w-3.5 h-3.5 text-[#39ff14]" />;
       case 'claim':
         return <Sparkles className="w-3.5 h-3.5 text-[#fbbf24]" />;
       case 'collab_pitch':
@@ -118,7 +118,7 @@ export const NotificationBell: React.FC = () => {
             <div className="sm:hidden w-12 h-1 bg-line rounded-full mx-auto my-2 shrink-0" />
 
             <div className="p-3.5 sm:p-4 border-b border-line flex items-center justify-between shrink-0 bg-surface-2">
-              <span className="font-sans text-sm font-semibold text-white">Transmissions</span>
+              <span className="font-sans text-sm font-semibold text-white">Notifications</span>
               <div className="flex items-center gap-3">
                 {unreadCount > 0 && (
                   <button
@@ -141,7 +141,7 @@ export const NotificationBell: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto divide-y divide-line overscroll-contain">
               {notifications.length === 0 ? (
-                <div className="p-8 text-center text-xs text-muted">No new transmissions.</div>
+                <div className="p-8 text-center text-xs text-muted">No new notifications.</div>
               ) : (
                 notifications.map((n) => (
                   <div

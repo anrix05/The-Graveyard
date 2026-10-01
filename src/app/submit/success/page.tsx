@@ -229,7 +229,7 @@ function SubmitSuccessContent() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-[#39ff14]">✓</span>
-                <span>Monitor notifications in your Operative Console for purchase alerts and pitch messages.</span>
+                <span>Monitor notifications in your Console for purchase alerts and pitch messages.</span>
               </li>
             </ul>
           </div>

@@ -167,7 +167,7 @@ export default function OrderConfirmationPage() {
 
   if (isLoading || isAuthLoading) {
     return (
-      <div className="min-h-dvh bg-bg flex flex-col font-sans">
+      <div className="min-h-dvh bg-bg flex flex-col font-sans pt-[var(--header-h)]">
         <Header />
         <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-16 animate-pulse space-y-6">
           <div className="h-8 w-48 bg-surface-2 rounded-full mx-auto" />
@@ -188,7 +188,7 @@ export default function OrderConfirmationPage() {
   const project = transaction.project;
 
   return (
-    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans">
+    <div className="min-h-dvh bg-bg text-fg flex flex-col font-sans pt-[var(--header-h)]">
       <div className="print:hidden">
         <Header />
       </div>

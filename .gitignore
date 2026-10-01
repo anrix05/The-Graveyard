@@ -39,5 +39,12 @@ skills-lock.json
 
 # brag video generation outputs
 brag-output/
+brag-output*/
+brag-output-2026-10-01-172800/
+brag-output-2026-10-01-172800
 *.brag.*
+
+# internal preview & simulator tools
+src/app/design-system/responsive/
+
 

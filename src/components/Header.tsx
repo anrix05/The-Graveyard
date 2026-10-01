@@ -19,6 +19,7 @@ import { useAuth } from '@/context/AuthContext';
 import Button from '@/components/ui/Button';
 import Avatar from '@/components/ui/Avatar';
 import NotificationBell from '@/components/ui/NotificationBell';
+import { getDisplayHandle } from '@/lib/user';
 import { cn } from '@/lib/utils';
 
 export const Header: React.FC = () => {
@@ -115,7 +116,7 @@ export const Header: React.FC = () => {
       <header
         className={cn(
           'fixed top-0 left-0 right-0 z-header w-full transition-colors duration-200 select-none',
-          'h-[60px] lg:h-[68px] landscape-compact-nav flex items-center pt-[env(safe-area-inset-top,0px)]',
+          'h-[var(--header-h)] landscape-compact-nav flex items-center pt-[env(safe-area-inset-top,0px)]',
           isScrolled
             ? 'bg-[#0a0a0b]/90 border-b border-line shadow-lg backdrop-blur-md'
             : 'bg-transparent border-b border-transparent'
@@ -183,8 +184,8 @@ export const Header: React.FC = () => {
                     className="h-10 flex items-center gap-2 rounded-full px-2 py-1 border border-line bg-surface-2 hover:border-white/20 transition-colors"
                   >
                     <Avatar username={user.username || 'operative'} size="sm" />
-                    <span className="hidden sm:inline font-mono text-xs text-fg px-1 max-w-[120px] truncate">
-                      @{user.username || 'operative'}
+                    <span className="hidden sm:inline font-sans text-xs text-fg px-1 max-w-[120px] truncate" title={getDisplayHandle(user)}>
+                      {getDisplayHandle(user)}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-muted mr-1" />
                   </button>
@@ -192,10 +193,10 @@ export const Header: React.FC = () => {
                   {isUserMenuOpen && (
                     <div className="absolute right-0 mt-2 w-56 rounded-modal bg-surface border border-line p-2 shadow-2xl z-dropdown animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3 py-2 border-b border-line mb-1">
-                        <p className="font-sans text-xs font-semibold text-white truncate">
-                          {user.username || 'Operative'}
+                        <p className="font-sans text-xs font-semibold text-white truncate" title={getDisplayHandle(user)}>
+                          {getDisplayHandle(user)}
                         </p>
-                        <p className="font-mono text-[11px] text-muted truncate">
+                        <p className="font-sans text-[11px] text-muted truncate">
                           {user.email}
                         </p>
                       </div>
@@ -206,7 +207,7 @@ export const Header: React.FC = () => {
                         className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
                       >
                         <LayoutDashboard className="w-4 h-4" />
-                        <span>Console & listings</span>
+                        <span>Console</span>
                       </Link>
 
                       <Link
@@ -215,7 +216,7 @@ export const Header: React.FC = () => {
                         className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-muted hover:text-white hover:bg-surface-2 rounded-xl transition-colors"
                       >
                         <Shield className="w-4 h-4 text-neon-green" />
-                        <span>Operative Vault</span>
+                        <span>Vault</span>
                       </Link>
 
                       <Link
